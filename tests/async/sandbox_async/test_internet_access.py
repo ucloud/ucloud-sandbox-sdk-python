@@ -10,7 +10,7 @@ async def test_internet_access_enabled(async_sandbox_factory):
 
     # Test internet connectivity by making a curl request to a reliable external site
     result = await sbx.commands.run(
-        "curl -s -o /dev/null -w '%{http_code}' https://e2b.dev"
+        "curl -s -o /dev/null -w '%{http_code}' https://sandbox.ucloudai.com"
     )
     assert result.exit_code == 0
     assert result.stdout.strip() == "200"
@@ -24,7 +24,7 @@ async def test_internet_access_disabled(async_sandbox_factory):
     # Test that internet connectivity is blocked by making a curl request
     with pytest.raises(CommandExitException) as exc_info:
         await sbx.commands.run(
-            "curl --connect-timeout 3 --max-time 5 -Is https://e2b.dev"
+            "curl --connect-timeout 3 --max-time 5 -Is https://sandbox.ucloudai.com"
         )
         # The command should fail or timeout when internet access is disabled
     assert exc_info.value.exit_code != 0
@@ -36,7 +36,7 @@ async def test_internet_access_default(async_sandbox):
     # Test internet connectivity by making a curl request to a reliable external site
 
     result = await async_sandbox.commands.run(
-        "curl -s -o /dev/null -w '%{http_code}' https://e2b.dev"
+        "curl -s -o /dev/null -w '%{http_code}' https://sandbox.ucloudai.com"
     )
     assert result.exit_code == 0
     assert result.stdout.strip() == "200"

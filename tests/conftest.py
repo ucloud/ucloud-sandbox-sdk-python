@@ -103,7 +103,7 @@ def build():
     ):
         return Template.build(
             template,
-            alias=alias or f"e2b-test-{uuid4()}",
+            alias=alias or f"ucloud-test-{uuid4()}",
             cpu_count=1,
             memory_mb=1024,
             skip_cache=skip_cache,
@@ -123,7 +123,7 @@ def async_build():
     ):
         return await AsyncTemplate.build(
             template,
-            alias=alias or f"e2b-test-{uuid4()}",
+            alias=alias or f"ucloud-test-{uuid4()}",
             cpu_count=1,
             memory_mb=1024,
             skip_cache=skip_cache,
@@ -135,14 +135,14 @@ def async_build():
 
 @pytest.fixture
 def debug():
-    return os.getenv("E2B_DEBUG") is not None
+    return os.getenv("AGENTBOX_DEBUG") is not None
 
 
 @pytest.fixture(autouse=True)
 def skip_by_debug(request, debug):
     if request.node.get_closest_marker("skip_debug"):
         if debug:
-            pytest.skip("skipped because E2B_DEBUG is set")
+            pytest.skip("skipped because AGENTBOX_DEBUG is set")
 
 
 class Helpers:

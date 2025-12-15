@@ -93,7 +93,7 @@ def _expect_to_throw_and_check_trace(func, expected_method: str):
 @pytest.mark.skip_debug()
 def test_traces_on_from_image(build):
     template = Template()
-    template = template.from_image("e2b.dev/this-image-does-not-exist")
+    template = template.from_image("sandbox.ucloudai.com/this-image-does-not-exist")
     _expect_to_throw_and_check_trace(
         lambda: build(template, alias="from_image", skip_cache=True), "from_image"
     )
