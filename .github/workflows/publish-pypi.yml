@@ -7,6 +7,7 @@ on:
 
 jobs:
   build-and-publish:
+    environment: ucloud-sandbox-sdk-python
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
