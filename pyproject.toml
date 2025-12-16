@@ -21,6 +21,8 @@ packaging = ">=24.1"
 typing-extensions = ">=4.1.0"
 dockerfile-parse = "^2.0.1"
 rich = ">=14.0.0"
+requests = "^2.32.3"
+pillow = "^11.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

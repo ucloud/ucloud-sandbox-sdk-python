@@ -92,6 +92,10 @@ from .template.types import BuildInfo, CopyItem
 from .template_async.main import AsyncTemplate
 from .template_sync.main import Template
 
+# Code Interpreter and Desktop modules are available as submodules:
+# from ucloud_sandbox.code_interpreter import Sandbox
+# from ucloud_sandbox.desktop import Sandbox
+
 __all__ = [
     # API
     "ApiClient",

@@ -20,15 +20,50 @@ pip install ucloud_sandbox
 export UCLOUD_SANDBOX_API_KEY=your_api_key
 ```
 
-### 2. 运行代码
+### 2. 基础沙箱
 
 ```python
 from ucloud_sandbox import Sandbox
 
 with Sandbox.create() as sandbox:
+    result = sandbox.commands.run("echo 'Hello, World!'")
+    print(result.stdout)
+```
+
+### 3. Code Interpreter（代码解释器）
+
+支持有状态的代码执行，变量在多次调用之间保持：
+
+```python
+from ucloud_sandbox.code_interpreter import Sandbox
+
+with Sandbox.create() as sandbox:
     sandbox.run_code("x = 1")
-    execution = sandbox.run_code("x += 1; x")
-    print(execution.text)  # 输出: 2
+    execution = sandbox.run_code("x += 1; print(x)")
+    print(execution.logs.stdout)  # ['2']
+```
+
+### 4. Desktop（桌面环境）
+
+支持鼠标键盘控制、截图、VNC 流媒体：
+
+```python
+from ucloud_sandbox.desktop import Sandbox
+
+desktop = Sandbox.create()
+
+# 截图
+screenshot = desktop.screenshot()
+
+# 鼠标操作
+desktop.left_click(100, 200)
+desktop.write("Hello, World!")
+
+# VNC 流
+desktop.stream.start()
+print(desktop.stream.get_url())
+
+desktop.kill()
 ```
 
 ## 文档
