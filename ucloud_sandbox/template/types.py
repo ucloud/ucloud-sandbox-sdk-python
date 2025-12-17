@@ -54,30 +54,20 @@ class GenericDockerRegistry(TypedDict):
     password: str
 
 
-class AWSRegistry(TypedDict):
+class UhubRegistry(TypedDict):
     """
-    Configuration for AWS Elastic Container Registry (ECR).
-    """
-
-    type: Literal["aws"]
-    awsAccessKeyId: str
-    awsSecretAccessKey: str
-    awsRegion: str
-
-
-class GCPRegistry(TypedDict):
-    """
-    Configuration for Google Container Registry (GCR) or Artifact Registry.
+    Configuration for UCloud Uhub Container Registry.
     """
 
-    type: Literal["gcp"]
-    serviceAccountJson: str
+    type: Literal["uhub"]
+    username: str
+    password: str
 
 
 """
 Union type for all supported container registry configurations.
 """
-RegistryConfig = Union[GenericDockerRegistry, AWSRegistry, GCPRegistry]
+RegistryConfig = Union[GenericDockerRegistry, UhubRegistry]
 
 
 class TemplateType(TypedDict):

@@ -19,7 +19,6 @@ from ucloud_agentbox.template.utils import (
     get_caller_directory,
     pad_octal,
     read_dockerignore,
-    read_gcp_service_account_json,
     get_caller_frame,
 )
 from types import TracebackType
@@ -1059,30 +1058,27 @@ class TemplateBase:
         self._collect_stack_trace()
         return builder
 
-    def from_aws_registry(
+    def from_uhub_registry(
         self,
         image: str,
-        access_key_id: str,
-        secret_access_key: str,
-        region: str,
+        username: str,
+        password: str,
     ) -> TemplateBuilder:
         """
-        Start template from an AWS ECR registry image.
+        Start template from a UCloud Uhub registry image.
 
-        :param image: Docker image name from AWS ECR
-        :param access_key_id: AWS access key ID
-        :param secret_access_key: AWS secret access key
-        :param region: AWS region
+        :param image: Docker image name from Uhub registry (e.g., uhub.service.ucloud.cn/xxx/myimage:latest)
+        :param username: Uhub username (e.g., user@ucloud.cn)
+        :param password: Uhub 独立密码
 
         :return: `TemplateBuilder` class
 
         Example
         ```python
-        Template().from_aws_registry(
-            '123456789.dkr.ecr.us-west-2.amazonaws.com/myimage:latest',
-            access_key_id='AKIA...',
-            secret_access_key='...',
-            region='us-west-2'
+        Template().from_uhub_registry(
+            'uhub.service.ucloud.cn/xxx/myimage:latest',
+            username='user@ucloud.cn',
+            password='your-uhub-password'
         )
         ```
         """
@@ -1091,47 +1087,9 @@ class TemplateBase:
 
         # Set the registry config if provided
         self._registry_config = {
-            "type": "aws",
-            "awsAccessKeyId": access_key_id,
-            "awsSecretAccessKey": secret_access_key,
-            "awsRegion": region,
-        }
-
-        # If we should force the next layer and it's a FROM command, invalidate whole template
-        if self._force_next_layer:
-            self._force = True
-
-        self._collect_stack_trace()
-        return TemplateBuilder(self)
-
-    def from_gcp_registry(
-        self, image: str, service_account_json: Union[str, dict]
-    ) -> TemplateBuilder:
-        """
-        Start template from a GCP Artifact Registry or Container Registry image.
-
-        :param image: Docker image name from GCP registry
-        :param service_account_json: Service account JSON string, dict, or path to JSON file
-
-        :return: `TemplateBuilder` class
-
-        Example
-        ```python
-        Template().from_gcp_registry(
-            'gcr.io/myproject/myimage:latest',
-            service_account_json='path/to/service-account.json'
-        )
-        ```
-        """
-        self._base_image = image
-        self._base_template = None
-
-        # Set the registry config if provided
-        self._registry_config = {
-            "type": "gcp",
-            "serviceAccountJson": read_gcp_service_account_json(
-                self._file_context_path, service_account_json
-            ),
+            "type": "uhub",
+            "username": username,
+            "password": password,
         }
 
         # If we should force the next layer and it's a FROM command, invalidate whole template
