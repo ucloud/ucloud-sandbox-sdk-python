@@ -737,7 +737,7 @@ class TemplateBase:
         :param file_context_path: Base path for resolving relative file paths in copy operations
         :param file_ignore_patterns: List of glob patterns to ignore when copying files
         """
-        self._default_base_image: str = "ucloud/agentbox-base"
+        self._default_base_image: str = "e2bdev/base"
         self._base_image: Optional[str] = self._default_base_image
         self._base_template: Optional[str] = None
         self._registry_config: Optional[RegistryConfig] = None
