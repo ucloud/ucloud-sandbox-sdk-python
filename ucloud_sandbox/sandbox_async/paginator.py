@@ -1,13 +1,13 @@
 import urllib.parse
 from typing import Optional, List
 
-from ucloud_agentbox.api.client.api.sandboxes import get_v2_sandboxes
-from ucloud_agentbox.api.client.types import UNSET
-from ucloud_agentbox.exceptions import SandboxException
-from ucloud_agentbox.sandbox.sandbox_api import SandboxPaginatorBase, SandboxInfo
-from ucloud_agentbox.api import handle_api_exception
-from ucloud_agentbox.api.client.models.error import Error
-from ucloud_agentbox.api.client_async import get_api_client
+from ucloud_sandbox.api.client.api.sandboxes import get_v2_sandboxes
+from ucloud_sandbox.api.client.types import UNSET
+from ucloud_sandbox.exceptions import SandboxException
+from ucloud_sandbox.sandbox.sandbox_api import SandboxPaginatorBase, SandboxInfo
+from ucloud_sandbox.api import handle_api_exception
+from ucloud_sandbox.api.client.models.error import Error
+from ucloud_sandbox.api.client_async import get_api_client
 
 
 class AsyncSandboxPaginator(SandboxPaginatorBase):

@@ -1,7 +1,7 @@
 import httpx
 import json
 
-from ucloud_agentbox.exceptions import (
+from ucloud_sandbox.exceptions import (
     SandboxException,
     NotFoundException,
     AuthenticationException,

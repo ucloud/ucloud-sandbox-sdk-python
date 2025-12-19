@@ -10,7 +10,7 @@ import inspect
 from types import TracebackType, FrameType
 from typing import List, Optional, Union
 
-from ucloud_agentbox.template.consts import BASE_STEP_NAME, FINALIZE_STEP_NAME
+from ucloud_sandbox.template.consts import BASE_STEP_NAME, FINALIZE_STEP_NAME
 
 
 def read_dockerignore(context_path: str) -> List[str]:

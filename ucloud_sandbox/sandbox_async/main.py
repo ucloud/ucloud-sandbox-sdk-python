@@ -8,19 +8,19 @@ import httpx
 from packaging.version import Version
 from typing_extensions import Self, Unpack
 
-from ucloud_agentbox.api.client.types import Unset
-from ucloud_agentbox.connection_config import ApiParams, ConnectionConfig
-from ucloud_agentbox.envd.api import ENVD_API_HEALTH_ROUTE, ahandle_envd_api_exception
-from ucloud_agentbox.envd.versions import ENVD_DEBUG_FALLBACK
-from ucloud_agentbox.exceptions import SandboxException, format_request_timeout_error
-from ucloud_agentbox.sandbox.main import SandboxOpts
-from ucloud_agentbox.sandbox.sandbox_api import SandboxMetrics, SandboxNetworkOpts
-from ucloud_agentbox.sandbox.utils import class_method_variant
-from ucloud_agentbox.sandbox_async.commands.command import Commands
-from ucloud_agentbox.sandbox_async.commands.pty import Pty
-from ucloud_agentbox.sandbox_async.filesystem.filesystem import Filesystem
-from ucloud_agentbox.sandbox_async.sandbox_api import SandboxApi, SandboxInfo
-from ucloud_agentbox.api.client_async import get_transport
+from ucloud_sandbox.api.client.types import Unset
+from ucloud_sandbox.connection_config import ApiParams, ConnectionConfig
+from ucloud_sandbox.envd.api import ENVD_API_HEALTH_ROUTE, ahandle_envd_api_exception
+from ucloud_sandbox.envd.versions import ENVD_DEBUG_FALLBACK
+from ucloud_sandbox.exceptions import SandboxException, format_request_timeout_error
+from ucloud_sandbox.sandbox.main import SandboxOpts
+from ucloud_sandbox.sandbox.sandbox_api import SandboxMetrics, SandboxNetworkOpts
+from ucloud_sandbox.sandbox.utils import class_method_variant
+from ucloud_sandbox.sandbox_async.commands.command import Commands
+from ucloud_sandbox.sandbox_async.commands.pty import Pty
+from ucloud_sandbox.sandbox_async.filesystem.filesystem import Filesystem
+from ucloud_sandbox.sandbox_async.sandbox_api import SandboxApi, SandboxInfo
+from ucloud_sandbox.api.client_async import get_transport
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class AsyncSandbox(SandboxApi):
 
     Example:
     ```python
-    from ucloud_agentbox import AsyncSandbox
+    from ucloud_sandbox import AsyncSandbox
 
     sandbox = await AsyncSandbox.create()
     ```

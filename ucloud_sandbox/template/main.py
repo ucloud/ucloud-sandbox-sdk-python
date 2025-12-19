@@ -3,18 +3,18 @@ from typing import Dict, List, Optional, Union, Literal
 from pathlib import Path
 
 
-from ucloud_agentbox.exceptions import BuildException
-from ucloud_agentbox.template.consts import STACK_TRACE_DEPTH, RESOLVE_SYMLINKS
-from ucloud_agentbox.template.dockerfile_parser import parse_dockerfile
-from ucloud_agentbox.template.readycmd import ReadyCmd, wait_for_file
-from ucloud_agentbox.template.types import (
+from ucloud_sandbox.exceptions import BuildException
+from ucloud_sandbox.template.consts import STACK_TRACE_DEPTH, RESOLVE_SYMLINKS
+from ucloud_sandbox.template.dockerfile_parser import parse_dockerfile
+from ucloud_sandbox.template.readycmd import ReadyCmd, wait_for_file
+from ucloud_sandbox.template.types import (
     CopyItem,
     Instruction,
     TemplateType,
     RegistryConfig,
     InstructionType,
 )
-from ucloud_agentbox.template.utils import (
+from ucloud_sandbox.template.utils import (
     calculate_files_hash,
     get_caller_directory,
     pad_octal,
@@ -657,7 +657,7 @@ class TemplateBuilder:
         )
 
         # Using ReadyCmd helpers
-        from ucloud_agentbox import wait_for_port, wait_for_url
+        from ucloud_sandbox import wait_for_port, wait_for_url
 
         template.set_start_cmd(
             'python -m http.server 8000',
@@ -693,7 +693,7 @@ class TemplateBuilder:
         template.set_ready_cmd('curl http://localhost:8000/health')
 
         # Using ReadyCmd helpers
-        from ucloud_agentbox import wait_for_port, wait_for_file, wait_for_process
+        from ucloud_sandbox import wait_for_port, wait_for_file, wait_for_process
 
         template.set_ready_cmd(wait_for_port(3000))
 

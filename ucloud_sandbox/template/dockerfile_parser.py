@@ -5,7 +5,7 @@ import tempfile
 from typing import Dict, List, Optional, Protocol, Union, Literal
 
 from dockerfile_parse import DockerfileParser
-from ucloud_agentbox.template.types import CopyItem
+from ucloud_sandbox.template.types import CopyItem
 
 
 class DockerfFileFinalParserInterface(Protocol):

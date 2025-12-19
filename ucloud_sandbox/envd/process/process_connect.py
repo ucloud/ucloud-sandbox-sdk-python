@@ -4,7 +4,7 @@ from httpcore import ConnectionPool, AsyncConnectionPool
 
 import e2b_connect as connect
 
-from ucloud_agentbox.envd.process import process_pb2 as process_dot_process__pb2
+from ucloud_sandbox.envd.process import process_pb2 as process_dot_process__pb2
 
 ProcessName = "process.Process"
 

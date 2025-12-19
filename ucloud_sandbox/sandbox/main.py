@@ -3,10 +3,10 @@ from typing import Optional, TypedDict
 
 from packaging.version import Version
 
-from ucloud_agentbox.connection_config import ConnectionConfig, default_username
-from ucloud_agentbox.envd.api import ENVD_API_FILES_ROUTE
-from ucloud_agentbox.envd.versions import ENVD_DEFAULT_USER
-from ucloud_agentbox.sandbox.signature import get_signature
+from ucloud_sandbox.connection_config import ConnectionConfig, default_username
+from ucloud_sandbox.envd.api import ENVD_API_FILES_ROUTE
+from ucloud_sandbox.envd.versions import ENVD_DEFAULT_USER
+from ucloud_sandbox.sandbox.signature import get_signature
 
 
 class SandboxOpts(TypedDict):

@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import IO, Optional, Union, TypedDict
 
-from ucloud_agentbox.envd.filesystem import filesystem_pb2
+from ucloud_sandbox.envd.filesystem import filesystem_pb2
 
 
 class FileType(Enum):

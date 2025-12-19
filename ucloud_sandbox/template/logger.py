@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.style import Style
 from rich.text import Text
 
-from ucloud_agentbox.template.utils import strip_ansi_escape_codes
+from ucloud_sandbox.template.utils import strip_ansi_escape_codes
 
 """Log entry severity levels."""
 LogEntryLevel = Literal["debug", "info", "warn", "error"]

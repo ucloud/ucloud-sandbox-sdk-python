@@ -5,7 +5,7 @@ from typing import Optional, Dict, TypedDict
 from httpx._types import ProxyTypes
 from typing_extensions import Unpack
 
-from ucloud_agentbox.api.metadata import package_version
+from ucloud_sandbox.api.metadata import package_version
 
 REQUEST_TIMEOUT: float = 60.0  # 60 seconds
 

@@ -1,31 +1,31 @@
 from io import IOBase
 from typing import IO, Iterator, List, Literal, Optional, overload, Union
 
-from ucloud_agentbox.sandbox.filesystem.filesystem import WriteEntry
+from ucloud_sandbox.sandbox.filesystem.filesystem import WriteEntry
 
 import e2b_connect
 import httpcore
 import httpx
 from packaging.version import Version
 
-from ucloud_agentbox.envd.versions import ENVD_VERSION_RECURSIVE_WATCH, ENVD_DEFAULT_USER
-from ucloud_agentbox.exceptions import SandboxException, TemplateException, InvalidArgumentException
-from ucloud_agentbox.connection_config import (
+from ucloud_sandbox.envd.versions import ENVD_VERSION_RECURSIVE_WATCH, ENVD_DEFAULT_USER
+from ucloud_sandbox.exceptions import SandboxException, TemplateException, InvalidArgumentException
+from ucloud_sandbox.connection_config import (
     ConnectionConfig,
     Username,
     default_username,
     KEEPALIVE_PING_HEADER,
     KEEPALIVE_PING_INTERVAL_SEC,
 )
-from ucloud_agentbox.envd.api import ENVD_API_FILES_ROUTE, handle_envd_api_exception
-from ucloud_agentbox.envd.filesystem import filesystem_connect, filesystem_pb2
-from ucloud_agentbox.envd.rpc import authentication_header, handle_rpc_exception
-from ucloud_agentbox.sandbox.filesystem.filesystem import (
+from ucloud_sandbox.envd.api import ENVD_API_FILES_ROUTE, handle_envd_api_exception
+from ucloud_sandbox.envd.filesystem import filesystem_connect, filesystem_pb2
+from ucloud_sandbox.envd.rpc import authentication_header, handle_rpc_exception
+from ucloud_sandbox.sandbox.filesystem.filesystem import (
     WriteInfo,
     EntryInfo,
     map_file_type,
 )
-from ucloud_agentbox.sandbox_sync.filesystem.watch_handle import WatchHandle
+from ucloud_sandbox.sandbox_sync.filesystem.watch_handle import WatchHandle
 
 
 class Filesystem:

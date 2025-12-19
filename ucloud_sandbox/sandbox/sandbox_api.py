@@ -4,9 +4,9 @@ from typing import Any, Dict, List, Optional, TypedDict, Union
 
 from typing_extensions import NotRequired, Unpack
 
-from ucloud_agentbox.connection_config import ConnectionConfig
-from ucloud_agentbox.api.client.models import ListedSandbox, SandboxDetail, SandboxState
-from ucloud_agentbox.connection_config import ApiParams
+from ucloud_sandbox.connection_config import ConnectionConfig
+from ucloud_sandbox.api.client.models import ListedSandbox, SandboxDetail, SandboxState
+from ucloud_sandbox.connection_config import ApiParams
 
 
 class SandboxNetworkOpts(TypedDict):

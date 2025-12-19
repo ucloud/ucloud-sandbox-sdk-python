@@ -4,25 +4,25 @@ from typing import Callable, Literal, Optional, List, Union
 
 import httpx
 
-from ucloud_agentbox.api import handle_api_exception
-from ucloud_agentbox.api.client.api.templates import (
+from ucloud_sandbox.api import handle_api_exception
+from ucloud_sandbox.api.client.api.templates import (
     post_v3_templates,
     get_templates_template_id_files_hash,
     post_v_2_templates_template_id_builds_build_id,
     get_templates_template_id_builds_build_id_status,
 )
-from ucloud_agentbox.api.client.client import AuthenticatedClient
-from ucloud_agentbox.api.client.models import (
+from ucloud_sandbox.api.client.client import AuthenticatedClient
+from ucloud_sandbox.api.client.models import (
     TemplateBuildRequestV3,
     TemplateBuildStartV2,
     TemplateBuildFileUpload,
     TemplateBuild,
     Error,
 )
-from ucloud_agentbox.exceptions import BuildException, FileUploadException
-from ucloud_agentbox.template.logger import LogEntry
-from ucloud_agentbox.template.types import TemplateType
-from ucloud_agentbox.template.utils import get_build_step_index, tar_file_stream
+from ucloud_sandbox.exceptions import BuildException, FileUploadException
+from ucloud_sandbox.template.logger import LogEntry
+from ucloud_sandbox.template.types import TemplateType
+from ucloud_sandbox.template.utils import get_build_step_index, tar_file_stream
 
 
 def request_build(

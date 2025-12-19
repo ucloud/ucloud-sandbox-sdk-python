@@ -10,16 +10,16 @@ from typing import (
     Coroutine,
 )
 
-from ucloud_agentbox.envd.rpc import handle_rpc_exception
-from ucloud_agentbox.envd.process import process_pb2
-from ucloud_agentbox.sandbox.commands.command_handle import (
+from ucloud_sandbox.envd.rpc import handle_rpc_exception
+from ucloud_sandbox.envd.process import process_pb2
+from ucloud_sandbox.sandbox.commands.command_handle import (
     CommandExitException,
     CommandResult,
     Stderr,
     Stdout,
     PtyOutput,
 )
-from ucloud_agentbox.sandbox_async.utils import OutputHandler
+from ucloud_sandbox.sandbox_async.utils import OutputHandler
 
 
 class AsyncCommandHandle:

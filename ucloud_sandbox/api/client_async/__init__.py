@@ -5,8 +5,8 @@ from typing import Optional
 
 from typing_extensions import Self
 
-from ucloud_agentbox.connection_config import ConnectionConfig
-from ucloud_agentbox.api import limits, AsyncApiClient
+from ucloud_sandbox.connection_config import ConnectionConfig
+from ucloud_sandbox.api import limits, AsyncApiClient
 
 
 logger = logging.getLogger(__name__)

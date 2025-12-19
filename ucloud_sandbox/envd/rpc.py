@@ -4,7 +4,7 @@ from typing import Optional
 from packaging.version import Version
 from e2b_connect.client import Code, ConnectException
 
-from ucloud_agentbox.exceptions import (
+from ucloud_sandbox.exceptions import (
     SandboxException,
     InvalidArgumentException,
     NotFoundException,
@@ -13,8 +13,8 @@ from ucloud_agentbox.exceptions import (
     AuthenticationException,
     RateLimitException,
 )
-from ucloud_agentbox.connection_config import Username, default_username
-from ucloud_agentbox.envd.versions import ENVD_DEFAULT_USER
+from ucloud_sandbox.connection_config import Username, default_username
+from ucloud_sandbox.envd.versions import ENVD_DEFAULT_USER
 
 
 def handle_rpc_exception(e: Exception):

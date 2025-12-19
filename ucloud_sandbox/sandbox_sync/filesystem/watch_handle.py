@@ -1,13 +1,13 @@
 from typing import List
 
 from e2b import SandboxException
-from ucloud_agentbox.envd.filesystem import filesystem_connect
-from ucloud_agentbox.envd.filesystem.filesystem_pb2 import (
+from ucloud_sandbox.envd.filesystem import filesystem_connect
+from ucloud_sandbox.envd.filesystem.filesystem_pb2 import (
     GetWatcherEventsRequest,
     RemoveWatcherRequest,
 )
-from ucloud_agentbox.envd.rpc import handle_rpc_exception
-from ucloud_agentbox.sandbox.filesystem.watch_handle import FilesystemEvent, map_event_type
+from ucloud_sandbox.envd.rpc import handle_rpc_exception
+from ucloud_sandbox.sandbox.filesystem.watch_handle import FilesystemEvent, map_event_type
 
 
 class WatchHandle:

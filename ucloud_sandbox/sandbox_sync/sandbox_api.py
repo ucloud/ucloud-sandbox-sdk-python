@@ -4,8 +4,8 @@ from typing import Dict, List, Optional
 from packaging.version import Version
 from typing_extensions import Unpack
 
-from ucloud_agentbox.api import SandboxCreateResponse, handle_api_exception
-from ucloud_agentbox.api.client.api.sandboxes import (
+from ucloud_sandbox.api import SandboxCreateResponse, handle_api_exception
+from ucloud_sandbox.api.client.api.sandboxes import (
     delete_sandboxes_sandbox_id,
     get_sandboxes_sandbox_id,
     get_sandboxes_sandbox_id_metrics,
@@ -14,7 +14,7 @@ from ucloud_agentbox.api.client.api.sandboxes import (
     post_sandboxes_sandbox_id_pause,
     post_sandboxes_sandbox_id_timeout,
 )
-from ucloud_agentbox.api.client.models import (
+from ucloud_sandbox.api.client.models import (
     ConnectSandbox,
     Error,
     NewSandbox,
@@ -22,17 +22,17 @@ from ucloud_agentbox.api.client.models import (
     Sandbox,
     SandboxNetworkConfig,
 )
-from ucloud_agentbox.api.client.types import UNSET
-from ucloud_agentbox.connection_config import ApiParams, ConnectionConfig
-from ucloud_agentbox.exceptions import NotFoundException, SandboxException, TemplateException
-from ucloud_agentbox.sandbox.main import SandboxBase
-from ucloud_agentbox.sandbox.sandbox_api import (
+from ucloud_sandbox.api.client.types import UNSET
+from ucloud_sandbox.connection_config import ApiParams, ConnectionConfig
+from ucloud_sandbox.exceptions import NotFoundException, SandboxException, TemplateException
+from ucloud_sandbox.sandbox.main import SandboxBase
+from ucloud_sandbox.sandbox.sandbox_api import (
     SandboxInfo,
     SandboxMetrics,
     SandboxNetworkOpts,
     SandboxQuery,
 )
-from ucloud_agentbox.sandbox_sync.paginator import SandboxPaginator, get_api_client
+from ucloud_sandbox.sandbox_sync.paginator import SandboxPaginator, get_api_client
 
 
 class SandboxApi(SandboxBase):

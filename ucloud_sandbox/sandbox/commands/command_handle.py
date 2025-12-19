@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ucloud_agentbox.exceptions import SandboxException
+from ucloud_sandbox.exceptions import SandboxException
 
 Stdout = str
 """

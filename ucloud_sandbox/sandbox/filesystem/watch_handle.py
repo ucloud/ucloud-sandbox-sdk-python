@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from ucloud_agentbox.envd.filesystem.filesystem_pb2 import EventType
+from ucloud_sandbox.envd.filesystem.filesystem_pb2 import EventType
 
 
 class FilesystemEventType(Enum):

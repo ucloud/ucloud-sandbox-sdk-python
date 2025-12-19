@@ -4,17 +4,17 @@ import httpcore
 from typing import Dict, Optional
 
 from packaging.version import Version
-from ucloud_agentbox.envd.process import process_connect, process_pb2
-from ucloud_agentbox.connection_config import (
+from ucloud_sandbox.envd.process import process_connect, process_pb2
+from ucloud_sandbox.connection_config import (
     Username,
     ConnectionConfig,
     KEEPALIVE_PING_HEADER,
     KEEPALIVE_PING_INTERVAL_SEC,
 )
-from ucloud_agentbox.exceptions import SandboxException
-from ucloud_agentbox.envd.rpc import authentication_header, handle_rpc_exception
-from ucloud_agentbox.sandbox.commands.command_handle import PtySize
-from ucloud_agentbox.sandbox_sync.commands.command_handle import CommandHandle
+from ucloud_sandbox.exceptions import SandboxException
+from ucloud_sandbox.envd.rpc import authentication_header, handle_rpc_exception
+from ucloud_sandbox.sandbox.commands.command_handle import PtySize
+from ucloud_sandbox.sandbox_sync.commands.command_handle import CommandHandle
 
 
 class Pty:

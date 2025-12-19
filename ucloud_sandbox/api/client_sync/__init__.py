@@ -5,8 +5,8 @@ import logging
 
 from typing_extensions import Self
 
-from ucloud_agentbox.api import ApiClient, limits
-from ucloud_agentbox.connection_config import ConnectionConfig
+from ucloud_sandbox.api import ApiClient, limits
+from ucloud_sandbox.connection_config import ConnectionConfig
 
 logger = logging.getLogger(__name__)
 

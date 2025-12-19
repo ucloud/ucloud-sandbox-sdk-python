@@ -7,11 +7,11 @@ from typing import Optional, Union
 
 from httpx import AsyncBaseTransport, BaseTransport, Limits
 
-from ucloud_agentbox.api.client.client import AuthenticatedClient
-from ucloud_agentbox.api.client.types import Response
-from ucloud_agentbox.api.metadata import default_headers
-from ucloud_agentbox.connection_config import ConnectionConfig
-from ucloud_agentbox.exceptions import (
+from ucloud_sandbox.api.client.client import AuthenticatedClient
+from ucloud_sandbox.api.client.types import Response
+from ucloud_sandbox.api.metadata import default_headers
+from ucloud_sandbox.connection_config import ConnectionConfig
+from ucloud_sandbox.exceptions import (
     AuthenticationException,
     RateLimitException,
     SandboxException,

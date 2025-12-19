@@ -4,7 +4,7 @@ from httpcore import ConnectionPool, AsyncConnectionPool
 
 import e2b_connect as connect
 
-from ucloud_agentbox.envd.filesystem import filesystem_pb2 as filesystem_dot_filesystem__pb2
+from ucloud_sandbox.envd.filesystem import filesystem_pb2 as filesystem_dot_filesystem__pb2
 
 FilesystemName = "filesystem.Filesystem"
 

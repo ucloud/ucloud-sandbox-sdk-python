@@ -2,13 +2,13 @@ import os
 from datetime import datetime
 from typing import Callable, Optional
 
-from ucloud_agentbox.api.client.client import AuthenticatedClient
-from ucloud_agentbox.connection_config import ConnectionConfig
-from ucloud_agentbox.template.consts import RESOLVE_SYMLINKS
-from ucloud_agentbox.template.logger import LogEntry, LogEntryEnd, LogEntryStart
-from ucloud_agentbox.template.main import TemplateBase, TemplateClass
-from ucloud_agentbox.template.types import BuildInfo, InstructionType
-from ucloud_agentbox.template.utils import read_dockerignore
+from ucloud_sandbox.api.client.client import AuthenticatedClient
+from ucloud_sandbox.connection_config import ConnectionConfig
+from ucloud_sandbox.template.consts import RESOLVE_SYMLINKS
+from ucloud_sandbox.template.logger import LogEntry, LogEntryEnd, LogEntryStart
+from ucloud_sandbox.template.main import TemplateBase, TemplateClass
+from ucloud_sandbox.template.types import BuildInfo, InstructionType
+from ucloud_sandbox.template.utils import read_dockerignore
 
 from .build_api import (
     get_build_status,
@@ -18,7 +18,7 @@ from .build_api import (
     upload_file,
     wait_for_build_finish,
 )
-from ucloud_agentbox.api.client_async import get_api_client
+from ucloud_sandbox.api.client_async import get_api_client
 
 
 class AsyncTemplate(TemplateBase):
@@ -193,7 +193,7 @@ class AsyncTemplate(TemplateBase):
 
         Example
         ```python
-        from ucloud_agentbox import AsyncTemplate
+        from ucloud_sandbox import AsyncTemplate
 
         template = (
             AsyncTemplate()
@@ -292,7 +292,7 @@ class AsyncTemplate(TemplateBase):
 
         Example
         ```python
-        from ucloud_agentbox import AsyncTemplate
+        from ucloud_sandbox import AsyncTemplate
 
         template = (
             AsyncTemplate()
@@ -347,7 +347,7 @@ class AsyncTemplate(TemplateBase):
 
         Example
         ```python
-        from ucloud_agentbox import AsyncTemplate
+        from ucloud_sandbox import AsyncTemplate
 
         build_info = await AsyncTemplate.build_in_background(template, alias='my-template')
         status = await AsyncTemplate.get_build_status(build_info, logs_offset=0)

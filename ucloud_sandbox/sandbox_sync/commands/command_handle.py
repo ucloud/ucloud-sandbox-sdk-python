@@ -1,8 +1,8 @@
 from typing import Optional, Callable, Any, Generator, Union, Tuple
 
-from ucloud_agentbox.envd.rpc import handle_rpc_exception
-from ucloud_agentbox.envd.process import process_pb2
-from ucloud_agentbox.sandbox.commands.command_handle import (
+from ucloud_sandbox.envd.rpc import handle_rpc_exception
+from ucloud_sandbox.envd.process import process_pb2
+from ucloud_sandbox.sandbox.commands.command_handle import (
     CommandExitException,
     CommandResult,
     Stderr,

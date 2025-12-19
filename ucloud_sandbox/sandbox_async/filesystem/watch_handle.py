@@ -3,10 +3,10 @@ import inspect
 
 from typing import Any, AsyncGenerator, Optional
 
-from ucloud_agentbox.envd.rpc import handle_rpc_exception
-from ucloud_agentbox.envd.filesystem.filesystem_pb2 import WatchDirResponse
-from ucloud_agentbox.sandbox.filesystem.watch_handle import FilesystemEvent, map_event_type
-from ucloud_agentbox.sandbox_async.utils import OutputHandler
+from ucloud_sandbox.envd.rpc import handle_rpc_exception
+from ucloud_sandbox.envd.filesystem.filesystem_pb2 import WatchDirResponse
+from ucloud_sandbox.sandbox.filesystem.watch_handle import FilesystemEvent, map_event_type
+from ucloud_sandbox.sandbox_async.utils import OutputHandler
 
 
 class AsyncWatchHandle:

@@ -3,7 +3,7 @@ import platform
 from importlib import metadata
 
 try:
-    package_version = metadata.version("ucloud_agentbox")
+    package_version = metadata.version("ucloud_sandbox")
 except metadata.PackageNotFoundError:
     package_version = "1.0.0"
 

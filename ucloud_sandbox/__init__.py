@@ -8,14 +8,14 @@ In these environments, large language models can use the same tools as humans do
 This SDK supports both sync and async API:
 
 ```py
-from ucloud_agentbox import Sandbox
+from ucloud_sandbox import Sandbox
 
 # Create sandbox
 sandbox = Sandbox.create()
 ```
 
 ```py
-from ucloud_agentbox import AsyncSandbox
+from ucloud_sandbox import AsyncSandbox
 
 # Create sandbox
 sandbox = await AsyncSandbox.create()
