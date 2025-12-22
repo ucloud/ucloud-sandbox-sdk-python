@@ -1,6 +1,6 @@
 from typing import List
 
-from e2b import SandboxException
+from ucloud_sandbox.exceptions import SandboxException
 from ucloud_sandbox.envd.filesystem import filesystem_connect
 from ucloud_sandbox.envd.filesystem.filesystem_pb2 import (
     GetWatcherEventsRequest,
