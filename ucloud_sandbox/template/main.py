@@ -1087,7 +1087,7 @@ class TemplateBase:
 
         # Set the registry config if provided
         self._registry_config = {
-            "type": "uhub",
+            "type": "registry",
             "username": username,
             "password": password,
         }
