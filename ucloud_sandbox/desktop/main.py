@@ -10,8 +10,8 @@ from uuid import uuid4
 
 from ucloud_sandbox.sandbox_sync.main import Sandbox as SandboxBase
 from ucloud_sandbox.sandbox_sync.commands.command_handle import CommandHandle
-from ucloud_sandbox.sandbox.commands.command_handle import CommandResult
-from ucloud_sandbox.exceptions import TimeoutException, CommandExitException
+from ucloud_sandbox.sandbox.commands.command_handle import CommandResult, CommandExitException
+from ucloud_sandbox.exceptions import TimeoutException
 from ucloud_sandbox.connection_config import ApiParams
 from typing_extensions import Self, Unpack
 
