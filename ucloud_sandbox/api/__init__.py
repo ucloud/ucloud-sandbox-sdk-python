@@ -45,23 +45,26 @@ def handle_api_exception(
     except json.JSONDecodeError:
         body = {}
 
+    # Extract X-Trace-ID from response headers
+    trace_id = e.headers.get("X-Trace-ID") or e.headers.get("x-trace-id")
+
     if e.status_code == 401:
         message = f"{e.status_code}: Unauthorized, please check your credentials."
         if body.get("message"):
             message += f" - {body['message']}"
-        return AuthenticationException(message)
+        return AuthenticationException(message, trace_id=trace_id)
 
     if e.status_code == 429:
         message = f"{e.status_code}: Rate limit exceeded, please try again later."
         if body.get("message"):
             message += f" - {body['message']}"
-        return RateLimitException(message)
+        return RateLimitException(message, trace_id=trace_id)
 
     if "message" in body:
         return default_exception_class(
-            f"{e.status_code}: {body['message']}"
+            f"{e.status_code}: {body['message']}", trace_id=trace_id
         ).with_traceback(stack_trace)
-    return default_exception_class(f"{e.status_code}: {e.content}").with_traceback(
+    return default_exception_class(f"{e.status_code}: {e.content}", trace_id=trace_id).with_traceback(
         stack_trace
     )
 

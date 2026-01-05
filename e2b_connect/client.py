@@ -61,9 +61,19 @@ def make_error_from_http_code(http_code: int):
 
 
 class ConnectException(Exception):
-    def __init__(self, status: Code, message: str):
+    def __init__(self, status: Code, message: str, trace_id: str = None):
         self.status = status
         self.message = message
+        self.trace_id = trace_id
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        if self.trace_id:
+            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
+        return self.message
+
+    def __str__(self) -> str:
+        return self._format_message()
 
 
 envelope_header_length = 5
@@ -84,15 +94,28 @@ def decode_envelope_header(header):
 
 
 def error_for_response(http_resp: Response):
+    trace_id = None
+    # Try to get X-Trace-ID from headers
+    if hasattr(http_resp, 'headers'):
+        headers = http_resp.headers
+        if isinstance(headers, (list, tuple)):
+            # httpcore returns headers as list of tuples
+            for name, value in headers:
+                if name.lower() == b'x-trace-id':
+                    trace_id = value.decode('utf-8') if isinstance(value, bytes) else value
+                    break
+        elif hasattr(headers, 'get'):
+            trace_id = headers.get("X-Trace-ID") or headers.get("x-trace-id")
+
     try:
         error = json.loads(http_resp.content)
-        return make_error(error)
+        return make_error(error, trace_id)
     except (json.decoder.JSONDecodeError, KeyError):
         error = {"code": http_resp.status, "message": http_resp.content.decode("utf-8")}
-        return make_error(error)
+        return make_error(error, trace_id)
 
 
-def make_error(error):
+def make_error(error, trace_id: str = None):
     status = None
     try:
         code_value = error.get("code")
@@ -104,7 +127,7 @@ def make_error(error):
     except (KeyError, ValueError):
         status = Code.unknown
 
-    return ConnectException(status, error.get("message", ""))
+    return ConnectException(status, error.get("message", ""), trace_id)
 
 
 def _sync_retry(func, exc, retries):

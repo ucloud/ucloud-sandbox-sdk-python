@@ -266,3 +266,4 @@ cython_debug/
 
 # Test results
 results.csv
+.ace-tool/

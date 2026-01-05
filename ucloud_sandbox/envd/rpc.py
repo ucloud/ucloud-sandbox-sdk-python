@@ -19,28 +19,32 @@ from ucloud_sandbox.envd.versions import ENVD_DEFAULT_USER
 
 def handle_rpc_exception(e: Exception):
     if isinstance(e, ConnectException):
+        trace_id = getattr(e, "trace_id", None)
         if e.status == Code.invalid_argument:
-            return InvalidArgumentException(e.message)
+            return InvalidArgumentException(e.message, trace_id=trace_id)
         elif e.status == Code.unauthenticated:
-            return AuthenticationException(e.message)
+            return AuthenticationException(e.message, trace_id=trace_id)
         elif e.status == Code.not_found:
-            return NotFoundException(e.message)
+            return NotFoundException(e.message, trace_id=trace_id)
         elif e.status == Code.unavailable:
-            return format_sandbox_timeout_exception(e.message)
+            return format_sandbox_timeout_exception(e.message, trace_id=trace_id)
         elif e.status == Code.resource_exhausted:
             return RateLimitException(
-                f"{e.message}: Rate limit exceeded, please try again later."
+                f"{e.message}: Rate limit exceeded, please try again later.",
+                trace_id=trace_id,
             )
         elif e.status == Code.canceled:
             return TimeoutException(
-                f"{e.message}: This error is likely due to exceeding 'request_timeout'. You can pass the request timeout value as an option when making the request."
+                f"{e.message}: This error is likely due to exceeding 'request_timeout'. You can pass the request timeout value as an option when making the request.",
+                trace_id=trace_id,
             )
         elif e.status == Code.deadline_exceeded:
             return TimeoutException(
-                f"{e.message}: This error is likely due to exceeding 'timeout' — the total time a long running request (like process or directory watch) can be active. It can be modified by passing 'timeout' when making the request. Use '0' to disable the timeout."
+                f"{e.message}: This error is likely due to exceeding 'timeout' — the total time a long running request (like process or directory watch) can be active. It can be modified by passing 'timeout' when making the request. Use '0' to disable the timeout.",
+                trace_id=trace_id,
             )
         else:
-            return SandboxException(f"{e.status}: {e.message}")
+            return SandboxException(f"{e.status}: {e.message}", trace_id=trace_id)
     else:
         return e
 

@@ -1,6 +1,7 @@
-def format_sandbox_timeout_exception(message: str):
+def format_sandbox_timeout_exception(message: str, trace_id: str = None):
     return TimeoutException(
-        f"{message}: This error is likely due to sandbox timeout. You can modify the sandbox timeout by passing 'timeout' when starting the sandbox or calling '.set_timeout' on the sandbox with the desired timeout."
+        f"{message}: This error is likely due to sandbox timeout. You can modify the sandbox timeout by passing 'timeout' when starting the sandbox or calling '.set_timeout' on the sandbox with the desired timeout.",
+        trace_id=trace_id,
     )
 
 
@@ -23,7 +24,18 @@ class SandboxException(Exception):
     Raised when a general sandbox exception occurs.
     """
 
-    pass
+    def __init__(self, message: str = "", trace_id: str = None):
+        self.message = message
+        self.trace_id = trace_id
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        if self.trace_id:
+            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
+        return self.message
+
+    def __str__(self) -> str:
+        return self._format_message()
 
 
 class TimeoutException(SandboxException):
@@ -68,7 +80,18 @@ class AuthenticationException(Exception):
     Raised when authentication fails.
     """
 
-    pass
+    def __init__(self, message: str = "", trace_id: str = None):
+        self.message = message
+        self.trace_id = trace_id
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        if self.trace_id:
+            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
+        return self.message
+
+    def __str__(self) -> str:
+        return self._format_message()
 
 
 class TemplateException(SandboxException):
