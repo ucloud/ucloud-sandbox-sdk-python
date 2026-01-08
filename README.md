@@ -67,7 +67,6 @@ desktop.kill()
 ```
 
 ## 文档
-TODO
 访问 [Sandbox 文档](https://github.com/UCloudDoc-Team/agent-sandbox) 获取更多信息。
 
 ## 致谢
