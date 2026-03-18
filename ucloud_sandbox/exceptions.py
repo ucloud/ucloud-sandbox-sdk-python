@@ -1,4 +1,7 @@
-def format_sandbox_timeout_exception(message: str, trace_id: str = None):
+from typing import Optional
+
+
+def format_sandbox_timeout_exception(message: str, trace_id: Optional[str] = None):
     return TimeoutException(
         f"{message}: This error is likely due to sandbox timeout. You can modify the sandbox timeout by passing 'timeout' when starting the sandbox or calling '.set_timeout' on the sandbox with the desired timeout.",
         trace_id=trace_id,
@@ -24,7 +27,7 @@ class SandboxException(Exception):
     Raised when a general sandbox exception occurs.
     """
 
-    def __init__(self, message: str = "", trace_id: str = None):
+    def __init__(self, message: str = "", trace_id: Optional[str] = None):
         self.message = message
         self.trace_id = trace_id
         super().__init__(self._format_message())
@@ -80,7 +83,7 @@ class AuthenticationException(Exception):
     Raised when authentication fails.
     """
 
-    def __init__(self, message: str = "", trace_id: str = None):
+    def __init__(self, message: str = "", trace_id: Optional[str] = None):
         self.message = message
         self.trace_id = trace_id
         super().__init__(self._format_message())
@@ -106,7 +109,7 @@ class RateLimitException(SandboxException):
     """
 
 
-class BuildException(Exception):
+class BuildException(SandboxException):
     """
     Raised when the build fails.
     """
