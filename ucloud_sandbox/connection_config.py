@@ -12,6 +12,13 @@ REQUEST_TIMEOUT: float = 60.0  # 60 seconds
 KEEPALIVE_PING_INTERVAL_SEC = 50  # 50 seconds
 KEEPALIVE_PING_HEADER = "Keepalive-Ping-Interval"
 
+REGION_DOMAIN_MAP = {
+    "cn-wlcb": "cn-wlcb.sandbox.ucloudai.com",
+    "us-ca": "us-ca.sandbox.ucloudai.com",
+}
+
+DEFAULT_REGION = "cn-wlcb"
+
 
 class ApiParams(TypedDict, total=False):
     """
@@ -30,7 +37,7 @@ class ApiParams(TypedDict, total=False):
     """AgentBox API Key to use for authentication, defaults to `AGENTBOX_API_KEY` environment variable."""
 
     domain: Optional[str]
-    """AgentBox domain to use, defaults to `AGENTBOX_DOMAIN` environment variable."""
+    """AgentBox domain to use, defaults to `AGENTBOX_DOMAIN` environment variable. If not set, derived from `AGENTBOX_REGION`."""
 
     api_url: Optional[str]
     """URL to use for the API, defaults to `https://api.<domain>`. For internal use only."""
@@ -53,8 +60,16 @@ class ConnectionConfig:
     envd_port = 49983
 
     @staticmethod
+    def _region():
+        return os.getenv("AGENTBOX_REGION") or DEFAULT_REGION
+
+    @staticmethod
     def _domain():
-        return os.getenv("AGENTBOX_DOMAIN") or "sandbox.ucloudai.com"
+        explicit_domain = os.getenv("AGENTBOX_DOMAIN")
+        if explicit_domain:
+            return explicit_domain
+        region = ConnectionConfig._region()
+        return REGION_DOMAIN_MAP.get(region, REGION_DOMAIN_MAP[DEFAULT_REGION])
 
     @staticmethod
     def _debug():

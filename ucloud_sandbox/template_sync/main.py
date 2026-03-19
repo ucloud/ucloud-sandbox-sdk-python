@@ -219,7 +219,6 @@ class Template(TemplateBase):
                     )
                 )
 
-            domain = domain or os.environ.get("AGENTBOX_DOMAIN", "sandbox.ucloudai.com")
             config = ConnectionConfig(
                 domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
             )
@@ -309,7 +308,6 @@ class Template(TemplateBase):
         )
         ```
         """
-        domain = domain or os.environ.get("AGENTBOX_DOMAIN", "sandbox.ucloudai.com")
         config = ConnectionConfig(
             domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
         )
@@ -353,7 +351,6 @@ class Template(TemplateBase):
         status = Template.get_build_status(build_info, logs_offset=0)
         ```
         """
-        domain = domain or os.environ.get("AGENTBOX_DOMAIN", "sandbox.ucloudai.com")
         config = ConnectionConfig(
             domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
         )
