@@ -1,168 +1,38 @@
 """
-UCloud AgentBox SDK - Secure sandboxed cloud environments for AI agents.
+UCloud Sandbox Python SDK
 
-AgentBox is a secure cloud sandbox environment made for AI agents and AI apps.
-Sandboxes allow AI agents and apps to have long running cloud secure environments.
-In these environments, large language models can use the same tools as humans do.
+A thin wrapper around the E2B SDK that routes to UCloud's sandbox infrastructure.
 
-This SDK supports both sync and async API:
+Quick start:
 
-```py
+```python
 from ucloud_sandbox import Sandbox
 
-# Create sandbox
 sandbox = Sandbox.create()
+result = sandbox.commands.run("echo 'Hello!'")
+sandbox.kill()
 ```
 
-```py
+Async:
+
+```python
 from ucloud_sandbox import AsyncSandbox
 
-# Create sandbox
 sandbox = await AsyncSandbox.create()
+result = await sandbox.commands.run("echo 'Hello!'")
+await sandbox.kill()
 ```
+
+Environment variables:
+- UCLOUD_SANDBOX_API_KEY:  API key
+- UCLOUD_SANDBOX_REGION:   region code (e.g. cn-wlcb, us-ca), default cn-wlcb
+- UCLOUD_SANDBOX_DOMAIN:   full domain override (takes precedence over REGION)
+- UCLOUD_SANDBOX_API_URL:  API URL override (optional)
 """
 
-from .api import (
-    ApiClient,
-    client,
-)
-from .connection_config import (
-    ConnectionConfig,
-    ProxyTypes,
-)
-from .exceptions import (
-    AuthenticationException,
-    BuildException,
-    FileUploadException,
-    InvalidArgumentException,
-    NotEnoughSpaceException,
-    NotFoundException,
-    SandboxException,
-    TemplateException,
-    TimeoutException,
-)
-from .sandbox.commands.command_handle import (
-    CommandExitException,
-    CommandResult,
-    PtyOutput,
-    PtySize,
-    Stderr,
-    Stdout,
-)
-from .sandbox.commands.main import ProcessInfo
-from .sandbox.filesystem.filesystem import EntryInfo, FileType, WriteInfo
-from .sandbox.filesystem.watch_handle import (
-    FilesystemEvent,
-    FilesystemEventType,
-)
-from .sandbox.network import ALL_TRAFFIC
-from .sandbox.sandbox_api import (
-    SandboxInfo,
-    SandboxMetrics,
-    SandboxNetworkOpts,
-    SandboxQuery,
-    SandboxState,
-)
-from .sandbox_async.commands.command_handle import AsyncCommandHandle
-from .sandbox_async.filesystem.watch_handle import AsyncWatchHandle
-from .sandbox_async.main import AsyncSandbox
-from .sandbox_async.paginator import AsyncSandboxPaginator
-from .sandbox_async.utils import OutputHandler
-from .sandbox_sync.commands.command_handle import CommandHandle
-from .sandbox_sync.filesystem.watch_handle import WatchHandle
-from .sandbox_sync.main import Sandbox
-from .sandbox_sync.paginator import SandboxPaginator
-from .template.logger import (
-    LogEntry,
-    LogEntryEnd,
-    LogEntryLevel,
-    LogEntryStart,
-    default_build_logger,
-)
-from .template.main import TemplateBase, TemplateClass
-from .template.readycmd import (
-    ReadyCmd,
-    wait_for_file,
-    wait_for_port,
-    wait_for_process,
-    wait_for_timeout,
-    wait_for_url,
-)
-from .template.types import BuildInfo, CopyItem
-from .template_async.main import AsyncTemplate
-from .template_sync.main import Template
+from . import _env
 
-# Code Interpreter and Desktop modules are available as submodules:
-# from ucloud_sandbox.code_interpreter import Sandbox
-# from ucloud_sandbox.desktop import Sandbox
+_env.setup()
 
-__all__ = [
-    # API
-    "ApiClient",
-    "client",
-    # Connection config
-    "ConnectionConfig",
-    "ProxyTypes",
-    # Exceptions
-    "SandboxException",
-    "TimeoutException",
-    "NotFoundException",
-    "AuthenticationException",
-    "InvalidArgumentException",
-    "NotEnoughSpaceException",
-    "TemplateException",
-    "BuildException",
-    "FileUploadException",
-    # Sandbox API
-    "SandboxInfo",
-    "SandboxMetrics",
-    "ProcessInfo",
-    "SandboxQuery",
-    "SandboxState",
-    "SandboxMetrics",
-    # Command handle
-    "CommandResult",
-    "Stderr",
-    "Stdout",
-    "CommandExitException",
-    "PtyOutput",
-    "PtySize",
-    # Filesystem
-    "FilesystemEvent",
-    "FilesystemEventType",
-    "EntryInfo",
-    "WriteInfo",
-    "FileType",
-    # Network
-    "SandboxNetworkOpts",
-    "ALL_TRAFFIC",
-    # Sync sandbox
-    "Sandbox",
-    "SandboxPaginator",
-    "WatchHandle",
-    "CommandHandle",
-    # Async sandbox
-    "OutputHandler",
-    "AsyncSandboxPaginator",
-    "AsyncSandbox",
-    "AsyncWatchHandle",
-    "AsyncCommandHandle",
-    # Template
-    "Template",
-    "AsyncTemplate",
-    "TemplateBase",
-    "TemplateClass",
-    "CopyItem",
-    "BuildInfo",
-    "ReadyCmd",
-    "wait_for_file",
-    "wait_for_url",
-    "wait_for_port",
-    "wait_for_process",
-    "wait_for_timeout",
-    "LogEntry",
-    "LogEntryStart",
-    "LogEntryEnd",
-    "LogEntryLevel",
-    "default_build_logger",
-]
+from e2b import *  # noqa: F401, F403
+from e2b import __all__  # noqa: F401
