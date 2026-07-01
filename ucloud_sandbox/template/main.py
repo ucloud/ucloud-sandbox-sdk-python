@@ -1,9 +1,10 @@
 import json
+import shlex
 from typing import Dict, List, Optional, Union, Literal
 from pathlib import Path
 
 
-from ucloud_sandbox.exceptions import BuildException
+from ucloud_sandbox.exceptions import BuildException, InvalidArgumentException
 from ucloud_sandbox.template.consts import STACK_TRACE_DEPTH, RESOLVE_SYMLINKS
 from ucloud_sandbox.template.dockerfile_parser import parse_dockerfile
 from ucloud_sandbox.template.readycmd import ReadyCmd, wait_for_file
@@ -17,16 +18,19 @@ from ucloud_sandbox.template.types import (
 from ucloud_sandbox.template.utils import (
     calculate_files_hash,
     get_caller_directory,
+    make_traceback,
     pad_octal,
     read_dockerignore,
+    read_gcp_service_account_json,
     get_caller_frame,
+    validate_relative_path,
 )
 from types import TracebackType
 
 
 class TemplateBuilder:
     """
-    Builder class for adding instructions to an AgentBox template.
+    Builder class for adding instructions to an UCloud Sandbox template.
 
     All methods return self to allow method chaining.
     """
@@ -63,9 +67,18 @@ class TemplateBuilder:
         """
         srcs = [src] if isinstance(src, (str, Path)) else src
 
+        # Get the caller frame for stack trace in validation errors
+        caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
+        stack_trace = make_traceback(caller_frame)
+
         for src_item in srcs:
+            src_string = str(src_item)
+
+            # Validate that the source path is a relative path within the context directory
+            validate_relative_path(src_string, stack_trace)
+
             args = [
-                str(src_item),
+                src_string,
                 str(dest),
                 user or "",
                 pad_octal(mode) if mode else "",
@@ -81,7 +94,11 @@ class TemplateBuilder:
 
             self._template._instructions.append(instruction)
 
-        self._template._collect_stack_trace()
+            # Collect one stack trace per pushed instruction so build steps
+            # stay aligned with their stack traces when copying multiple
+            # sources
+            self._template._collect_stack_trace()
+
         return self
 
     def copy_items(self, items: List[CopyItem]) -> "TemplateBuilder":
@@ -100,19 +117,30 @@ class TemplateBuilder:
         ])
         ```
         """
-        self._template._run_in_new_stack_trace_context(
-            lambda: [
-                self.copy(
-                    item["src"],
-                    item["dest"],
-                    item.get("forceUpload"),
-                    item.get("user"),
-                    item.get("mode"),
-                    item.get("resolveSymlinks"),
-                )
-                for item in items
-            ]
-        )
+        # Get the stack trace at the copy_items call site
+        caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
+        stack_trace = make_traceback(caller_frame)
+
+        def _copy_items():
+            for item in items:
+                try:
+                    self.copy(
+                        item["src"],
+                        item["dest"],
+                        item.get("forceUpload"),
+                        item.get("user"),
+                        item.get("mode"),
+                        item.get("resolveSymlinks"),
+                    )
+                except Exception as error:
+                    # Re-raise the error with the captured stack trace
+                    if stack_trace is not None:
+                        raise error.with_traceback(stack_trace)
+                    raise
+
+        # Use the override so each copied item collects this stack trace,
+        # keeping build steps aligned with their stack traces
+        self._template._run_in_stack_trace_override_context(_copy_items, stack_trace)
         return self
 
     def remove(
@@ -144,7 +172,7 @@ class TemplateBuilder:
             args.append("-r")
         if force:
             args.append("-f")
-        args.extend([str(p) for p in paths])
+        args.extend([shlex.quote(str(p)) for p in paths])
 
         return self._template._run_in_new_stack_trace_context(
             lambda: self.run_cmd(" ".join(args), user=user)
@@ -173,7 +201,7 @@ class TemplateBuilder:
         template.rename('/tmp/old.txt', '/tmp/new.txt', user='root')
         ```
         """
-        args = ["mv", str(src), str(dest)]
+        args = ["mv", shlex.quote(str(src)), shlex.quote(str(dest))]
         if force:
             args.append("-f")
 
@@ -207,7 +235,7 @@ class TemplateBuilder:
         args = ["mkdir", "-p"]
         if mode:
             args.append(f"-m {pad_octal(mode)}")
-        args.extend([str(p) for p in path_list])
+        args.extend([shlex.quote(str(p)) for p in path_list])
 
         return self._template._run_in_new_stack_trace_context(
             lambda: self.run_cmd(" ".join(args), user=user)
@@ -240,7 +268,7 @@ class TemplateBuilder:
         args = ["ln", "-s"]
         if force:
             args.append("-f")
-        args.extend([str(src), str(dest)])
+        args.extend([shlex.quote(str(src)), shlex.quote(str(dest))])
         return self._template._run_in_new_stack_trace_context(
             lambda: self.run_cmd(" ".join(args), user=user)
         )
@@ -437,13 +465,17 @@ class TemplateBuilder:
         )
 
     def apt_install(
-        self, packages: Union[str, List[str]], no_install_recommends: bool = False
+        self,
+        packages: Union[str, List[str]],
+        no_install_recommends: bool = False,
+        fix_missing: bool = False,
     ) -> "TemplateBuilder":
         """
         Install system packages using apt-get.
 
         :param packages: Package name(s) to install
         :param no_install_recommends: Whether to install recommended packages
+        :param fix_missing: Whether to fix missing packages
 
         :return: `TemplateBuilder` class
 
@@ -451,6 +483,7 @@ class TemplateBuilder:
         ```python
         template.apt_install('vim')
         template.apt_install(['git', 'curl', 'wget'])
+        template.apt_install('vim', fix_missing=True)
         ```
         """
         if isinstance(packages, str):
@@ -460,12 +493,41 @@ class TemplateBuilder:
             lambda: self.run_cmd(
                 [
                     "apt-get update",
-                    f"DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y {'--no-install-recommends ' if no_install_recommends else ''}{' '.join(packages)}",
+                    f"DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y {'--no-install-recommends ' if no_install_recommends else ''}{'--fix-missing ' if fix_missing else ''}{' '.join(packages)}",
                 ],
                 user="root",
             )
         )
 
+    def add_mcp_server(self, servers: Union[str, List[str]]) -> "TemplateBuilder":
+        """
+        Install MCP servers using mcp-gateway.
+
+        Note: Requires a base image with mcp-gateway pre-installed (e.g., mcp-gateway).
+
+        :param servers: MCP server name(s)
+
+        :return: `TemplateBuilder` class
+
+        Example
+        ```python
+        template.add_mcp_server('exa')
+        template.add_mcp_server(['brave', 'firecrawl', 'duckduckgo'])
+        ```
+        """
+        if self._template._base_template != "mcp-gateway":
+            caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
+            stack_trace = make_traceback(caller_frame)
+            raise BuildException(
+                "MCP servers can only be added to mcp-gateway template"
+            ).with_traceback(stack_trace)
+
+        if isinstance(servers, str):
+            servers = [servers]
+
+        return self._template._run_in_new_stack_trace_context(
+            lambda: self.run_cmd(f"mcp-gateway pull {' '.join(servers)}", user="root")
+        )
 
     def git_clone(
         self,
@@ -493,14 +555,14 @@ class TemplateBuilder:
         template.git_clone('https://github.com/user/repo.git', '/app/repo', user='root')
         ```
         """
-        args = ["git", "clone", url]
+        args = ["git", "clone", shlex.quote(url)]
         if branch:
-            args.append(f"--branch {branch}")
+            args.append(f"--branch {shlex.quote(branch)}")
             args.append("--single-branch")
         if depth:
             args.append(f"--depth {depth}")
         if path:
-            args.append(str(path))
+            args.append(shlex.quote(str(path)))
         return self._template._run_in_new_stack_trace_context(
             lambda: self.run_cmd(" ".join(args), user=user)
         )
@@ -524,21 +586,14 @@ class TemplateBuilder:
         """
         if self._template._base_template != "devcontainer":
             caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
-            stack_trace = None
-            if caller_frame is not None:
-                stack_trace = TracebackType(
-                    tb_next=None,
-                    tb_frame=caller_frame,
-                    tb_lasti=caller_frame.f_lasti,
-                    tb_lineno=caller_frame.f_lineno,
-                )
+            stack_trace = make_traceback(caller_frame)
             raise BuildException(
                 "Devcontainers can only used in the devcontainer template"
             ).with_traceback(stack_trace)
 
         return self._template._run_in_new_stack_trace_context(
             lambda: self.run_cmd(
-                f"devcontainer build --workspace-folder {devcontainer_directory}",
+                f"devcontainer build --workspace-folder {shlex.quote(str(devcontainer_directory))}",
                 user="root",
             )
         )
@@ -570,24 +625,18 @@ class TemplateBuilder:
         """
         if self._template._base_template != "devcontainer":
             caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
-            stack_trace = None
-            if caller_frame is not None:
-                stack_trace = TracebackType(
-                    tb_next=None,
-                    tb_frame=caller_frame,
-                    tb_lasti=caller_frame.f_lasti,
-                    tb_lineno=caller_frame.f_lineno,
-                )
+            stack_trace = make_traceback(caller_frame)
             raise BuildException(
                 "Devcontainers can only used in the devcontainer template"
             ).with_traceback(stack_trace)
 
         def _set_start():
+            dir_ = shlex.quote(str(devcontainer_directory))
             return self.set_start_cmd(
                 "sudo devcontainer up --workspace-folder "
-                + str(devcontainer_directory)
+                + dir_
                 + " && sudo /prepare-exec.sh "
-                + str(devcontainer_directory)
+                + dir_
                 + " | sudo tee /devcontainer.sh > /dev/null && sudo chmod +x /devcontainer.sh && sudo touch /devcontainer.up",
                 wait_for_file("/devcontainer.up"),
             )
@@ -596,7 +645,8 @@ class TemplateBuilder:
 
     def set_envs(self, envs: Dict[str, str]) -> "TemplateBuilder":
         """
-        Set environment variables in the template.
+        Set environment variables.
+        Note: Environment variables defined here are available only during template build.
 
         :param envs: Dictionary of environment variable names and values
 
@@ -721,7 +771,7 @@ class TemplateFinal:
 
 class TemplateBase:
     """
-    Base class for building AgentBox sandbox templates.
+    Base class for building UCloud Sandbox sandbox templates.
     """
 
     _logs_refresh_frequency = 0.2
@@ -792,19 +842,7 @@ class TemplateBase:
             return self
 
         stack = get_caller_frame(stack_traces_depth)
-        if stack is None:
-            self._stack_traces.append(None)
-            return self
-
-        # Create a traceback object from the caller frame
-        capture_stack_trace = TracebackType(
-            tb_next=None,
-            tb_frame=stack,
-            tb_lasti=stack.f_lasti,
-            tb_lineno=stack.f_lineno,
-        )
-
-        self._stack_traces.append(capture_stack_trace)
+        self._stack_traces.append(make_traceback(stack))
         return self
 
     def _disable_stack_trace(self) -> "TemplateBase":
@@ -834,8 +872,10 @@ class TemplateBase:
         :return: The result of the function
         """
         self._disable_stack_trace()
-        result = fn()
-        self._enable_stack_trace()
+        try:
+            result = fn()
+        finally:
+            self._enable_stack_trace()
         self._collect_stack_trace(STACK_TRACE_DEPTH + 1)
         return result
 
@@ -851,9 +891,10 @@ class TemplateBase:
         :return: The result of the function
         """
         self._stack_traces_override = stack_trace_override
-        result = fn()
-        self._stack_traces_override = None
-        return result
+        try:
+            return fn()
+        finally:
+            self._stack_traces_override = None
 
     # Built-in image mixins
     def from_debian_image(self, variant: str = "stable") -> TemplateBuilder:
@@ -938,7 +979,7 @@ class TemplateBase:
 
     def from_base_image(self) -> TemplateBuilder:
         """
-        Start template from the AgentBox base image (ucloud/agentbox-base:latest).
+        Start template from the UCloud Sandbox base image (uhub.service.ucloud.cn/agentbox/e2bdev/base:latest).
 
         :return: `TemplateBuilder` class
 
@@ -974,16 +1015,23 @@ class TemplateBase:
         Template().from_image('myregistry.com/myimage:latest', username='user', password='pass')
         ```
         """
-        self._base_image = image
-        self._base_template = None
+        # Validate (and resolve the registry config) before mutating the builder.
+        if username is not None or password is not None:
+            if not username or not password:
+                caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
+                stack_trace = make_traceback(caller_frame)
+                raise InvalidArgumentException(
+                    "Both username and password are required when providing registry credentials"
+                ).with_traceback(stack_trace)
 
-        # Set the registry config if provided
-        if username and password:
             self._registry_config = {
                 "type": "registry",
                 "username": username,
                 "password": password,
             }
+
+        self._base_image = image
+        self._base_template = None
 
         # If we should force the next layer and it's a FROM command, invalidate whole template
         if self._force_next_layer:
@@ -994,9 +1042,9 @@ class TemplateBase:
 
     def from_template(self, template: str) -> TemplateBuilder:
         """
-        Start template from an existing AgentBox template.
+        Start template from an existing UCloud Sandbox template.
 
-        :param template: AgentBox template ID or alias
+        :param template: UCloud Sandbox template ID or alias
 
         :return: `TemplateBuilder` class
 
@@ -1035,14 +1083,7 @@ class TemplateBase:
         # Get the caller frame to use for stack trace override
         # -1 as we're going up the call stack from the parse_dockerfile function
         caller_frame = get_caller_frame(STACK_TRACE_DEPTH - 1)
-        stack_trace_override = None
-        if caller_frame is not None:
-            stack_trace_override = TracebackType(
-                tb_next=None,
-                tb_frame=caller_frame,
-                tb_lasti=caller_frame.f_lasti,
-                tb_lineno=caller_frame.f_lineno,
-            )
+        stack_trace_override = make_traceback(caller_frame)
 
         # Parse the dockerfile using the builder as the interface
         base_image = self._run_in_stack_trace_override_context(
@@ -1058,27 +1099,30 @@ class TemplateBase:
         self._collect_stack_trace()
         return builder
 
-    def from_uhub_registry(
+    def from_aws_registry(
         self,
         image: str,
-        username: str,
-        password: str,
+        access_key_id: str,
+        secret_access_key: str,
+        region: str,
     ) -> TemplateBuilder:
         """
-        Start template from a UCloud Uhub registry image.
+        Start template from an AWS ECR registry image.
 
-        :param image: Docker image name from Uhub registry (e.g., uhub.service.ucloud.cn/xxx/myimage:latest)
-        :param username: Uhub username (e.g., user@ucloud.cn)
-        :param password: Uhub 独立密码
+        :param image: Docker image name from AWS ECR
+        :param access_key_id: AWS access key ID
+        :param secret_access_key: AWS secret access key
+        :param region: AWS region
 
         :return: `TemplateBuilder` class
 
         Example
         ```python
-        Template().from_uhub_registry(
-            'uhub.service.ucloud.cn/xxx/myimage:latest',
-            username='user@ucloud.cn',
-            password='your-uhub-password'
+        Template().from_aws_registry(
+            '123456789.dkr.ecr.us-west-2.amazonaws.com/myimage:latest',
+            access_key_id='AKIA...',
+            secret_access_key='...',
+            region='us-west-2'
         )
         ```
         """
@@ -1087,9 +1131,47 @@ class TemplateBase:
 
         # Set the registry config if provided
         self._registry_config = {
-            "type": "registry",
-            "username": username,
-            "password": password,
+            "type": "aws",
+            "awsAccessKeyId": access_key_id,
+            "awsSecretAccessKey": secret_access_key,
+            "awsRegion": region,
+        }
+
+        # If we should force the next layer and it's a FROM command, invalidate whole template
+        if self._force_next_layer:
+            self._force = True
+
+        self._collect_stack_trace()
+        return TemplateBuilder(self)
+
+    def from_gcp_registry(
+        self, image: str, service_account_json: Union[str, dict]
+    ) -> TemplateBuilder:
+        """
+        Start template from a GCP Artifact Registry or Container Registry image.
+
+        :param image: Docker image name from GCP registry
+        :param service_account_json: Service account JSON string, dict, or path to JSON file
+
+        :return: `TemplateBuilder` class
+
+        Example
+        ```python
+        Template().from_gcp_registry(
+            'gcr.io/myproject/myimage:latest',
+            service_account_json='path/to/service-account.json'
+        )
+        ```
+        """
+        self._base_image = image
+        self._base_template = None
+
+        # Set the registry config if provided
+        self._registry_config = {
+            "type": "gcp",
+            "serviceAccountJson": read_gcp_service_account_json(
+                self._file_context_path, service_account_json
+            ),
         }
 
         # If we should force the next layer and it's a FROM command, invalidate whole template
@@ -1126,13 +1208,13 @@ class TemplateBase:
         """
         Convert a template to Dockerfile format.
 
-        Note: Templates based on other AgentBox templates cannot be converted to Dockerfile.
+        Note: Templates based on other UCloud Sandbox templates cannot be converted to Dockerfile.
 
         :param template: The template to convert (TemplateBuilder or TemplateFinal instance)
 
         :return: Dockerfile string representation
 
-        :raises ValueError: If the template is based on another AgentBox template or has no base image
+        :raises ValueError: If the template is based on another UCloud Sandbox template or has no base image
 
         Example
         ```python
@@ -1143,7 +1225,7 @@ class TemplateBase:
         if template._template._base_template is not None:
             raise ValueError(
                 "Cannot convert template built from another template to Dockerfile. "
-                "Templates based on other templates can only be built using the AgentBox API."
+                "Templates based on other templates can only be built using the UCloud Sandbox API."
             )
 
         if template._template._base_image is None:

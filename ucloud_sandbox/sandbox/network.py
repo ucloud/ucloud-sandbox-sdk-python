@@ -1,5 +1,5 @@
 """
-Network configuration helpers for AgentBox sandboxes.
+Network configuration helpers for UCloud Sandbox sandboxes.
 """
 
 """

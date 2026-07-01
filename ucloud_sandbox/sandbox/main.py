@@ -6,6 +6,7 @@ from packaging.version import Version
 from ucloud_sandbox.connection_config import ConnectionConfig, default_username
 from ucloud_sandbox.envd.api import ENVD_API_FILES_ROUTE
 from ucloud_sandbox.envd.versions import ENVD_DEFAULT_USER
+from ucloud_sandbox.exceptions import InvalidArgumentException
 from ucloud_sandbox.sandbox.signature import get_signature
 
 
@@ -14,15 +15,17 @@ class SandboxOpts(TypedDict):
     sandbox_domain: Optional[str]
     envd_version: Version
     envd_access_token: Optional[str]
-    sandbox_url: Optional[str]
     traffic_access_token: Optional[str]
     connection_config: ConnectionConfig
 
 
 class SandboxBase:
+    mcp_port = 50005
+
     default_sandbox_timeout = 300
 
     default_template = "base"
+    default_mcp_template = "mcp-gateway"
 
     def __init__(
         self,
@@ -42,13 +45,23 @@ class SandboxBase:
         self.__envd_api_url = self.connection_config.get_sandbox_url(
             self.sandbox_id, self.sandbox_domain
         )
+        self.__envd_direct_url = self.connection_config.get_sandbox_direct_url(
+            self.sandbox_id, self.sandbox_domain
+        )
+        self.__mcp_token: Optional[str] = None
 
     @property
     def _envd_access_token(self) -> Optional[str]:
         """Private property to access the envd token"""
         return self.__envd_access_token
 
+    @property
+    def _mcp_token(self) -> Optional[str]:
+        return self.__mcp_token
 
+    @_mcp_token.setter
+    def _mcp_token(self, token: str) -> None:
+        self.__mcp_token = token
 
     @property
     def connection_config(self) -> ConnectionConfig:
@@ -63,12 +76,16 @@ class SandboxBase:
         return self.__traffic_access_token
 
     @property
-    def sandbox_domain(self) -> Optional[str]:
+    def sandbox_domain(self) -> str:
         return self.__sandbox_domain
 
     @property
     def envd_api_url(self) -> str:
         return self.__envd_api_url
+
+    @property
+    def envd_direct_url(self) -> str:
+        return self.__envd_direct_url
 
     @property
     def sandbox_id(self) -> str:
@@ -84,7 +101,7 @@ class SandboxBase:
         signature: Optional[str] = None,
         signature_expiration: Optional[int] = None,
     ) -> str:
-        url = urllib.parse.urljoin(self.envd_api_url, ENVD_API_FILES_ROUTE)
+        url = urllib.parse.urljoin(self.envd_direct_url, ENVD_API_FILES_ROUTE)
         query = {"path": path} if path else {}
 
         if user:
@@ -122,11 +139,16 @@ class SandboxBase:
         :return: URL for downloading file
         """
 
+        use_signature = self._envd_access_token is not None
+        if not use_signature and use_signature_expiration is not None:
+            raise InvalidArgumentException(
+                "Signature expiration can be used only when sandbox is created as secured."
+            )
+
         username = user
         if username is None and self._envd_version < ENVD_DEFAULT_USER:
             username = default_username
 
-        use_signature = self._envd_access_token is not None
         if use_signature:
             signature = get_signature(
                 path,
@@ -159,11 +181,16 @@ class SandboxBase:
         :return: URL for uploading file
         """
 
+        use_signature = self._envd_access_token is not None
+        if not use_signature and use_signature_expiration is not None:
+            raise InvalidArgumentException(
+                "Signature expiration can be used only when sandbox is created as secured."
+            )
+
         username = user
         if username is None and self._envd_version < ENVD_DEFAULT_USER:
             username = default_username
 
-        use_signature = self._envd_access_token is not None
         if use_signature:
             signature = get_signature(
                 path,
@@ -191,4 +218,10 @@ class SandboxBase:
             self.sandbox_id, self.sandbox_domain, port
         )
 
+    def get_mcp_url(self) -> str:
+        """
+        Get the MCP URL for the sandbox.
 
+        :returns MCP URL for the sandbox.
+        """
+        return f"https://{self.get_host(self.mcp_port)}/mcp"

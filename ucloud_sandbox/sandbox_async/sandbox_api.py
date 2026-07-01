@@ -1,5 +1,5 @@
 import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from packaging.version import Version
 from typing_extensions import Unpack
@@ -12,26 +12,42 @@ from ucloud_sandbox.api.client.api.sandboxes import (
     post_sandboxes,
     post_sandboxes_sandbox_id_connect,
     post_sandboxes_sandbox_id_pause,
+    post_sandboxes_sandbox_id_snapshots,
     post_sandboxes_sandbox_id_timeout,
+    put_sandboxes_sandbox_id_network,
 )
+from ucloud_sandbox.api.client.api.templates import delete_templates_template_id
 from ucloud_sandbox.api.client.models import (
     ConnectSandbox,
     Error,
     NewSandbox,
+    PostSandboxesSandboxIDSnapshotsBody,
     PostSandboxesSandboxIDTimeoutBody,
-    Sandbox,
+    SandboxAutoResumeConfig,
     SandboxNetworkConfig,
+    SandboxVolumeMount as SandboxVolumeMountAPI,
 )
 from ucloud_sandbox.api.client.types import UNSET
 from ucloud_sandbox.api.client_async import get_api_client
 from ucloud_sandbox.connection_config import ApiParams, ConnectionConfig
-from ucloud_sandbox.exceptions import NotFoundException, SandboxException, TemplateException
+from ucloud_sandbox.exceptions import (
+    InvalidArgumentException,
+    SandboxException,
+    SandboxNotFoundException,
+    TemplateException,
+)
 from ucloud_sandbox.sandbox.main import SandboxBase
 from ucloud_sandbox.sandbox.sandbox_api import (
+    build_network_update_body,
+    McpServer,
     SandboxInfo,
+    SandboxLifecycle,
     SandboxMetrics,
     SandboxNetworkOpts,
+    SandboxNetworkUpdate,
     SandboxQuery,
+    SnapshotInfo,
+    build_network_config,
 )
 from ucloud_sandbox.sandbox_async.paginator import AsyncSandboxPaginator
 
@@ -81,7 +97,7 @@ class SandboxApi(SandboxBase):
         )
 
         if res.status_code == 404:
-            raise NotFoundException(f"Sandbox {sandbox_id} not found")
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
 
         if res.status_code >= 300:
             raise handle_api_exception(res)
@@ -141,7 +157,29 @@ class SandboxApi(SandboxBase):
         )
 
         if res.status_code == 404:
-            raise NotFoundException(f"Paused sandbox {sandbox_id} not found")
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
+
+        if res.status_code >= 300:
+            raise handle_api_exception(res)
+
+    @classmethod
+    async def _cls_update_network(
+        cls,
+        sandbox_id: str,
+        network: SandboxNetworkUpdate,
+        **opts: Unpack[ApiParams],
+    ) -> None:
+        config = ConnectionConfig(**opts)
+
+        api_client = get_api_client(config)
+        res = await put_sandboxes_sandbox_id_network.asyncio_detailed(
+            sandbox_id,
+            client=api_client,
+            body=build_network_update_body(network),
+        )
+
+        if res.status_code == 404:
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
 
         if res.status_code >= 300:
             raise handle_api_exception(res)
@@ -151,28 +189,44 @@ class SandboxApi(SandboxBase):
         cls,
         template: str,
         timeout: int,
-        auto_pause: bool,
         allow_internet_access: bool,
         metadata: Optional[Dict[str, str]],
         env_vars: Optional[Dict[str, str]],
         secure: bool,
+        mcp: Optional[McpServer] = None,
         network: Optional[SandboxNetworkOpts] = None,
+        lifecycle: Optional[SandboxLifecycle] = None,
+        volume_mounts: Optional[List[SandboxVolumeMountAPI]] = None,
         **opts: Unpack[ApiParams],
     ) -> SandboxCreateResponse:
         config = ConnectionConfig(**opts)
 
+        on_timeout = lifecycle.get("on_timeout", "kill") if lifecycle else "kill"
+        auto_resume = lifecycle.get("auto_resume", False) if lifecycle else False
+
+        if auto_resume and on_timeout != "pause":
+            raise InvalidArgumentException(
+                "auto_resume can only be True when the resolved on_timeout is 'pause'."
+            )
+
+        network_body = build_network_config(network)
+        body = NewSandbox(
+            template_id=template,
+            auto_pause=on_timeout == "pause",
+            auto_resume=SandboxAutoResumeConfig(enabled=auto_resume),
+            metadata=metadata or {},
+            timeout=timeout,
+            env_vars=env_vars or {},
+            mcp=cast(Any, mcp) or UNSET,
+            secure=secure,
+            allow_internet_access=allow_internet_access,
+            network=SandboxNetworkConfig(**network_body) if network_body else UNSET,
+            volume_mounts=volume_mounts if volume_mounts else UNSET,
+        )
+
         api_client = get_api_client(config)
         res = await post_sandboxes.asyncio_detailed(
-            body=NewSandbox(
-                template_id=template,
-                auto_pause=auto_pause,
-                metadata=metadata or {},
-                timeout=timeout,
-                env_vars=env_vars or {},
-                secure=secure,
-                allow_internet_access=allow_internet_access,
-                network=SandboxNetworkConfig(**network) if network else UNSET,
-            ),
+            body=body,
             client=api_client,
         )
 
@@ -188,16 +242,27 @@ class SandboxApi(SandboxBase):
         if Version(res.parsed.envd_version) < Version("0.1.0"):
             await SandboxApi._cls_kill(res.parsed.sandbox_id)
             raise TemplateException(
-                "You need to update the template to use the new SDK. "
-                "You can do this by running `e2b template build` in the directory with the template."
+                "You need to update the template to use the new SDK."
             )
+
+        domain = res.parsed.domain if isinstance(res.parsed.domain, str) else None
+        envd_token = (
+            res.parsed.envd_access_token
+            if isinstance(res.parsed.envd_access_token, str)
+            else None
+        )
+        traffic_token = (
+            res.parsed.traffic_access_token
+            if isinstance(res.parsed.traffic_access_token, str)
+            else None
+        )
 
         return SandboxCreateResponse(
             sandbox_id=res.parsed.sandbox_id,
-            sandbox_domain=res.parsed.domain,
+            sandbox_domain=domain,
             envd_version=res.parsed.envd_version,
-            envd_access_token=res.parsed.envd_access_token,
-            traffic_access_token=res.parsed.traffic_access_token,
+            envd_access_token=envd_token,
+            traffic_access_token=traffic_token,
         )
 
     @classmethod
@@ -226,10 +291,13 @@ class SandboxApi(SandboxBase):
         api_client = get_api_client(config)
         res = await get_sandboxes_sandbox_id_metrics.asyncio_detailed(
             sandbox_id,
-            start=int(start.timestamp() * 1000) if start else UNSET,
-            end=int(end.timestamp() * 1000) if end else UNSET,
+            start=int(start.timestamp()) if start else UNSET,
+            end=int(end.timestamp()) if end else UNSET,
             client=api_client,
         )
+
+        if res.status_code == 404:
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
 
         if res.status_code >= 300:
             raise handle_api_exception(res)
@@ -250,17 +318,73 @@ class SandboxApi(SandboxBase):
                 disk_used=metric.disk_used,
                 mem_total=metric.mem_total,
                 mem_used=metric.mem_used,
+                mem_cache=metric.mem_cache,
                 timestamp=metric.timestamp,
             )
             for metric in res.parsed
         ]
 
     @classmethod
+    async def _cls_create_snapshot(
+        cls,
+        sandbox_id: str,
+        name: Optional[str] = None,
+        **opts: Unpack[ApiParams],
+    ) -> SnapshotInfo:
+        config = ConnectionConfig(**opts)
+
+        api_client = get_api_client(config)
+        res = await post_sandboxes_sandbox_id_snapshots.asyncio_detailed(
+            sandbox_id,
+            client=api_client,
+            body=PostSandboxesSandboxIDSnapshotsBody(name=name if name else UNSET),
+        )
+
+        if res.status_code == 404:
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
+
+        if res.status_code >= 300:
+            raise handle_api_exception(res)
+
+        if res.parsed is None:
+            raise Exception("Body of the request is None")
+
+        if isinstance(res.parsed, Error):
+            raise SandboxException(f"{res.parsed.message}: Request failed")
+
+        return SnapshotInfo(
+            snapshot_id=res.parsed.snapshot_id,
+            names=list(res.parsed.names) if res.parsed.names else [],
+        )
+
+    @classmethod
+    async def _cls_delete_snapshot(
+        cls,
+        snapshot_id: str,
+        **opts: Unpack[ApiParams],
+    ) -> bool:
+        config = ConnectionConfig(**opts)
+
+        api_client = get_api_client(config)
+        res = await delete_templates_template_id.asyncio_detailed(
+            snapshot_id,
+            client=api_client,
+        )
+
+        if res.status_code == 404:
+            return False
+
+        if res.status_code >= 300:
+            raise handle_api_exception(res)
+
+        return True
+
+    @classmethod
     async def _cls_pause(
         cls,
         sandbox_id: str,
         **opts: Unpack[ApiParams],
-    ) -> str:
+    ) -> bool:
         config = ConnectionConfig(**opts)
 
         api_client = get_api_client(config)
@@ -270,10 +394,11 @@ class SandboxApi(SandboxBase):
         )
 
         if res.status_code == 404:
-            raise NotFoundException(f"Sandbox {sandbox_id} not found")
+            raise SandboxNotFoundException(f"Sandbox {sandbox_id} not found")
 
         if res.status_code == 409:
-            return sandbox_id
+            # Sandbox is already paused
+            return False
 
         if res.status_code >= 300:
             raise handle_api_exception(res)
@@ -282,7 +407,7 @@ class SandboxApi(SandboxBase):
         if isinstance(res.parsed, Error):
             raise SandboxException(f"{res.parsed.message}: Request failed")
 
-        return sandbox_id
+        return True
 
     @classmethod
     async def _cls_connect(
@@ -290,19 +415,13 @@ class SandboxApi(SandboxBase):
         sandbox_id: str,
         timeout: Optional[int] = None,
         **opts: Unpack[ApiParams],
-    ) -> Sandbox:
+    ) -> SandboxCreateResponse:
         timeout = timeout or SandboxBase.default_sandbox_timeout
 
         # Sandbox is not running, resume it
         config = ConnectionConfig(**opts)
 
-        api_client = get_api_client(
-            config,
-            headers={
-                "E2b-Sandbox-Id": sandbox_id,
-                "E2b-Sandbox-Port": str(config.envd_port),
-            },
-        )
+        api_client = get_api_client(config)
         res = await post_sandboxes_sandbox_id_connect.asyncio_detailed(
             sandbox_id,
             client=api_client,
@@ -310,7 +429,7 @@ class SandboxApi(SandboxBase):
         )
 
         if res.status_code == 404:
-            raise NotFoundException(f"Paused sandbox {sandbox_id} not found")
+            raise SandboxNotFoundException(f"Paused sandbox {sandbox_id} not found")
 
         if res.status_code >= 300:
             raise handle_api_exception(res)
@@ -319,4 +438,25 @@ class SandboxApi(SandboxBase):
         if isinstance(res.parsed, Error):
             raise SandboxException(f"{res.parsed.message}: Request failed")
 
-        return res.parsed
+        if res.parsed is None:
+            raise Exception("Body of the request is None")
+
+        domain = res.parsed.domain if isinstance(res.parsed.domain, str) else None
+        envd_token = (
+            res.parsed.envd_access_token
+            if isinstance(res.parsed.envd_access_token, str)
+            else None
+        )
+        traffic_token = (
+            res.parsed.traffic_access_token
+            if isinstance(res.parsed.traffic_access_token, str)
+            else None
+        )
+
+        return SandboxCreateResponse(
+            sandbox_id=res.parsed.sandbox_id,
+            sandbox_domain=domain,
+            envd_version=res.parsed.envd_version,
+            envd_access_token=envd_token,
+            traffic_access_token=traffic_token,
+        )

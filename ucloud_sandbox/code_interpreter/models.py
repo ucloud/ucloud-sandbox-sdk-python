@@ -1,15 +1,12 @@
-"""
-Data models for Code Interpreter execution results.
-"""
-
 import inspect
 import json
 import logging
 
-from ucloud_sandbox.exceptions import NotFoundException, TimeoutException, SandboxException
+from ucloud_sandbox import NotFoundException, TimeoutException, SandboxException
 from dataclasses import dataclass, field
 from typing import (
     List,
+    Literal,
     Optional,
     Iterable,
     Dict,
@@ -23,6 +20,11 @@ from typing import (
 from httpx import Response
 
 from .charts import Chart, _deserialize_chart
+
+RunCodeLanguage = Union[
+    Literal["python", "javascript", "typescript", "r", "java", "bash"],
+    str,
+]
 
 T = TypeVar("T")
 OutputHandler = Union[Callable[[T], Any],]
@@ -101,9 +103,11 @@ class MIMEType(str):
 class Result:
     """
     Represents the data to be displayed as a result of executing a cell in a Jupyter notebook.
-    The result is similar to the structure returned by ipython kernel.
+    The result is similar to the structure returned by ipython kernel: https://ipython.readthedocs.io/en/stable/development/execution.html#execution-semantics
 
-    The result can contain multiple types of data, such as text, images, plots, etc.
+    The result can contain multiple types of data, such as text, images, plots, etc. Each type of data is represented
+    as a string, and the result can contain multiple types of data. The display calls don't have to have text representation,
+    for the actual result the representation is always present for the result, the other representations are always optional.
     """
 
     def __getitem__(self, item):
@@ -122,7 +126,7 @@ class Result:
     data: Optional[dict] = None
     chart: Optional[Chart] = None
     is_main_result: bool = False
-    """Whether this data is the result of the cell."""
+    """Whether this data is the result of the cell. Data can be produced by display calls of which can be multiple in a cell."""
     extra: Optional[dict] = None
     """Extra data that can be included. Not part of the standard types."""
 
@@ -142,7 +146,7 @@ class Result:
         chart: Optional[dict] = None,
         is_main_result: bool = False,
         extra: Optional[dict] = None,
-        **kwargs,
+        **kwargs,  # Allows for future expansion
     ):
         self.text = text
         self.html = html
@@ -204,6 +208,11 @@ class Result:
         return formats
 
     def __str__(self) -> Optional[str]:
+        """
+        Returns the text representation of the data.
+
+        :return: The text representation of the data.
+        """
         return self.__repr__()
 
     def __repr__(self) -> str:
@@ -213,43 +222,88 @@ class Result:
             return "Result(Formats: " + ", ".join(self.formats()) + ")"
 
     def _repr_html_(self) -> Optional[str]:
+        """
+        Returns the HTML representation of the data.
+
+        :return: The HTML representation of the data.
+        """
         return self.html
 
     def _repr_markdown_(self) -> Optional[str]:
+        """
+        Returns the Markdown representation of the data.
+
+        :return: The Markdown representation of the data.
+        """
         return self.markdown
 
     def _repr_svg_(self) -> Optional[str]:
+        """
+        Returns the SVG representation of the data.
+
+        :return: The SVG representation of the data.
+        """
         return self.svg
 
     def _repr_png_(self) -> Optional[str]:
+        """
+        Returns the base64 representation of the PNG data.
+
+        :return: The base64 representation of the PNG data.
+        """
         return self.png
 
     def _repr_jpeg_(self) -> Optional[str]:
+        """
+        Returns the base64 representation of the JPEG data.
+
+        :return: The base64 representation of the JPEG data.
+        """
         return self.jpeg
 
     def _repr_pdf_(self) -> Optional[str]:
+        """
+        Returns the PDF representation of the data.
+
+        :return: The PDF representation of the data.
+        """
         return self.pdf
 
     def _repr_latex_(self) -> Optional[str]:
+        """
+        Returns the LaTeX representation of the data.
+
+        :return: The LaTeX representation of the data.
+        """
         return self.latex
 
     def _repr_json_(self) -> Optional[dict]:
+        """
+        Returns the JSON representation of the data.
+
+        :return: The JSON representation of the data.
+        """
         return self.json
 
     def _repr_javascript_(self) -> Optional[str]:
+        """
+        Returns the JavaScript representation of the data.
+
+        :return: The JavaScript representation of the data.
+        """
         return self.javascript
 
 
 @dataclass(repr=False)
 class Logs:
     """
-    Data printed to stdout and stderr during execution.
+    Data printed to stdout and stderr during execution, usually by print statements, logs, warnings, subprocesses, etc.
     """
 
     stdout: List[str] = field(default_factory=list)
-    """List of strings printed to stdout."""
+    """List of strings printed to stdout by prints, subprocesses, etc."""
     stderr: List[str] = field(default_factory=list)
-    """List of strings printed to stderr."""
+    """List of strings printed to stderr by prints, subprocesses, etc."""
 
     def __init__(self, stdout: List[str] = None, stderr: List[str] = None, **kwargs):
         self.stdout = stdout or []
@@ -259,6 +313,9 @@ class Logs:
         return f"Logs(stdout: {self.stdout}, stderr: {self.stderr})"
 
     def to_json(self) -> str:
+        """
+        Returns the JSON representation of the Logs object.
+        """
         data = {"stdout": self.stdout, "stderr": self.stderr}
         return json.dumps(data)
 
@@ -289,7 +346,7 @@ class Execution:
     """
 
     results: List[Result] = field(default_factory=list)
-    """List of the result of the cell, display calls (e.g. matplotlib plots)."""
+    """List of the result of the cell (interactively interpreted last line), display calls (e.g. matplotlib plots)."""
     logs: Logs = field(default_factory=Logs)
     """Logs printed to stdout and stderr during execution."""
     error: Optional[ExecutionError] = None
@@ -317,6 +374,8 @@ class Execution:
     def text(self) -> Optional[str]:
         """
         Returns the text representation of the result.
+
+        :return: The text representation of the result.
         """
         for d in self.results:
             if d.is_main_result:

@@ -1,17 +1,16 @@
-"""
-Desktop Sandbox - Desktop environment with mouse and keyboard control.
-"""
-
 import time
 from re import search as re_search
 from shlex import quote as quote_string
 from typing import Callable, Dict, Iterator, Literal, Optional, overload, Tuple, Union
 from uuid import uuid4
 
-from ucloud_sandbox.sandbox_sync.main import Sandbox as SandboxBase
-from ucloud_sandbox.sandbox_sync.commands.command_handle import CommandHandle
-from ucloud_sandbox.sandbox.commands.command_handle import CommandResult, CommandExitException
-from ucloud_sandbox.exceptions import TimeoutException
+from ucloud_sandbox import (
+    Sandbox as SandboxBase,
+    CommandHandle,
+    CommandResult,
+    TimeoutException,
+    CommandExitException,
+)
 from ucloud_sandbox.connection_config import ApiParams
 from typing_extensions import Self, Unpack
 
@@ -83,7 +82,7 @@ def map_key(key: str) -> str:
 
 
 class _VNCServer:
-    def __init__(self, desktop: "Desktop") -> None:
+    def __init__(self, desktop: "Sandbox") -> None:
         self.__novnc_handle: Optional[CommandHandle] = None
 
         self._vnc_port = 5900
@@ -203,37 +202,6 @@ class _VNCServer:
 
 
 class Sandbox(SandboxBase):
-    """
-    UCloud Sandbox Desktop - Desktop environment for AI agents.
-
-    The Desktop Sandbox allows you to:
-    - Control mouse (click, move, drag, scroll)
-    - Control keyboard (type text, press keys)
-    - Take screenshots
-    - Stream desktop via VNC
-    - Run graphical applications
-
-    Use the `Desktop.create()` to create a new sandbox.
-
-    Example:
-    ```python
-    from ucloud_sandbox import Desktop
-
-    desktop = Desktop.create()
-    
-    # Take a screenshot
-    screenshot = desktop.screenshot()
-    
-    # Click and type
-    desktop.left_click(100, 200)
-    desktop.write("Hello, World!")
-    
-    # Stream via VNC
-    desktop.stream.start()
-    print(desktop.stream.get_url())
-    ```
-    """
-
     default_template = "desktop"
     __vnc_server: _VNCServer
     _last_xfce4_pid: Optional[str] = None
@@ -254,21 +222,24 @@ class Sandbox(SandboxBase):
         **opts: Unpack[ApiParams],
     ) -> Self:
         """
-        Create a new desktop sandbox.
+        Create a new sandbox.
 
         By default, the sandbox is created from the default `desktop` sandbox template.
+
 
         :param template: Sandbox template name or ID
         :param resolution: Startup the desktop with custom screen resolution. Defaults to (1024, 768)
         :param dpi: Startup the desktop with custom DPI. Defaults to 96
         :param display: Startup the desktop with custom display. Defaults to ":0"
-        :param timeout: Timeout for the sandbox in **seconds**, default to 300 seconds.
+        :param timeout: Timeout for the sandbox in **seconds**, default to 300 seconds. The maximum time a sandbox can be kept alive is 24 hours (86_400 seconds) for Pro users and 1 hour (3_600 seconds) for Hobby users.
         :param metadata: Custom metadata for the sandbox
         :param envs: Custom environment variables for the sandbox
         :param secure: Envd is secured with access token and cannot be used without it
         :param allow_internet_access: Allow sandbox to access the internet, defaults to `True`.
 
-        :return: A Desktop instance for the new sandbox
+        :return: A Sandbox instance for the new sandbox
+
+        Use this method instead of using the constructor to create a new sandbox.
         """
 
         # Initialize environment variables with DISPLAY
@@ -289,79 +260,13 @@ class Sandbox(SandboxBase):
 
         sbx._display = display
         width, height = resolution or (1024, 768)
-        sbx.commands.run(
+        xvfb_handle = sbx.commands.run(
             f"Xvfb {display} -ac -screen 0 {width}x{height}x24"
             f" -retro -dpi {dpi or 96} -nolisten tcp -nolisten unix",
             background=True,
             timeout=0,
         )
-
-        if not sbx._wait_and_verify(
-            f"xdpyinfo -display {display}", lambda r: r.exit_code == 0
-        ):
-            raise TimeoutException("Could not start Xvfb")
-
-        sbx.__vnc_server = _VNCServer(sbx)
-        sbx._start_xfce4()
-
-        return sbx
-
-    @classmethod
-    def beta_create(
-        cls,
-        template: Optional[str] = None,
-        resolution: Optional[Tuple[int, int]] = None,
-        dpi: Optional[int] = None,
-        display: Optional[str] = None,
-        timeout: Optional[int] = None,
-        auto_pause: Optional[bool] = False,
-        metadata: Optional[Dict[str, str]] = None,
-        envs: Optional[Dict[str, str]] = None,
-        secure: bool = True,
-        allow_internet_access: bool = True,
-        **opts: Unpack[ApiParams],
-    ) -> Self:
-        """
-        [BETA] Create a new desktop sandbox with auto-pause support.
-
-        :param template: Sandbox template name or ID
-        :param resolution: Startup the desktop with custom screen resolution. Defaults to (1024, 768)
-        :param dpi: Startup the desktop with custom DPI. Defaults to 96
-        :param display: Startup the desktop with custom display. Defaults to ":0"
-        :param timeout: Timeout for the sandbox in **seconds**
-        :param auto_pause: Automatically pause the sandbox after the timeout expires. Defaults to `False`.
-        :param metadata: Custom metadata for the sandbox
-        :param envs: Custom environment variables for the sandbox
-        :param secure: Envd is secured with access token and cannot be used without it
-        :param allow_internet_access: Allow sandbox to access the internet, defaults to `True`.
-
-        :return: A Desktop instance for the new sandbox
-        """
-
-        # Initialize environment variables with DISPLAY
-        display = display or ":0"
-        if envs is None:
-            envs = {}
-        envs["DISPLAY"] = display
-
-        sbx = super().beta_create(
-            template=template,
-            timeout=timeout,
-            metadata=metadata,
-            envs=envs,
-            secure=secure,
-            allow_internet_access=allow_internet_access,
-            **opts,
-        )
-
-        sbx._display = display
-        width, height = resolution or (1024, 768)
-        sbx.commands.run(
-            f"Xvfb {display} -ac -screen 0 {width}x{height}x24"
-            f" -retro -dpi {dpi or 96} -nolisten tcp -nolisten unix",
-            background=True,
-            timeout=0,
-        )
+        xvfb_handle.disconnect()
 
         if not sbx._wait_and_verify(
             f"xdpyinfo -display {display}", lambda r: r.exit_code == 0
@@ -386,7 +291,7 @@ class Sandbox(SandboxBase):
                 if on_result(self.commands.run(cmd)):
                     return True
             except CommandExitException:
-                pass
+                continue
 
             time.sleep(interval)
             elapsed += interval
@@ -402,15 +307,12 @@ class Sandbox(SandboxBase):
                 f"ps aux | grep {self._last_xfce4_pid} | grep -v grep | head -n 1"
             ).stdout.strip()
         ):
-            self._last_xfce4_pid = self.commands.run(
-                "startxfce4", background=True, timeout=0
-            ).pid
+            xfce4_handle = self.commands.run("startxfce4", background=True, timeout=0)
+            self._last_xfce4_pid = xfce4_handle.pid
+            xfce4_handle.disconnect()
 
     @property
     def stream(self) -> _VNCServer:
-        """
-        VNC streaming server for the desktop.
-        """
         return self.__vnc_server
 
     @overload
@@ -435,7 +337,7 @@ class Sandbox(SandboxBase):
         """
         Take a screenshot and return it in the specified format.
 
-        :param format: The format of the screenshot. Can be 'bytes' or 'stream'.
+        :param format: The format of the screenshot. Can be 'bytes', 'blob', or 'stream'.
         :returns: The screenshot in the specified format.
         """
         screenshot_path = f"/tmp/screenshot-{uuid4()}.png"
@@ -463,11 +365,11 @@ class Sandbox(SandboxBase):
         self.commands.run("xdotool click --repeat 2 1")
 
     def right_click(self, x: Optional[int] = None, y: Optional[int] = None):
+        if (x is None) != (y is None):
+            raise ValueError("Both x and y must be provided together")
         """
         Right click on the mouse position.
         """
-        if (x is None) != (y is None):
-            raise ValueError("Both x and y must be provided together")
         if x and y:
             self.move_mouse(x, y)
         self.commands.run("xdotool click 3")
@@ -512,7 +414,7 @@ class Sandbox(SandboxBase):
         """
         self.commands.run(f"xdotool mouseup {MOUSE_BUTTONS[button]}")
 
-    def get_cursor_position(self) -> Tuple[int, int]:
+    def get_cursor_position(self) -> tuple[int, int]:
         """
         Get the current cursor position.
 
@@ -533,7 +435,7 @@ class Sandbox(SandboxBase):
 
         return int(x), int(y)
 
-    def get_screen_size(self) -> Tuple[int, int]:
+    def get_screen_size(self) -> tuple[int, int]:
         """
         Get the current screen size.
 
@@ -571,7 +473,7 @@ class Sandbox(SandboxBase):
                 f"xdotool type --delay {delay_in_ms} -- {quote_string(chunk)}"
             )
 
-    def press(self, key: Union[str, list]):
+    def press(self, key: Union[str, list[str]]):
         """
         Press a key.
 
@@ -581,13 +483,14 @@ class Sandbox(SandboxBase):
             key = "+".join(map_key(k) for k in key)
         else:
             key = map_key(key)
+
         self.commands.run(f"xdotool key {key}")
 
-    def drag(self, fr: Tuple[int, int], to: Tuple[int, int]):
+    def drag(self, fr: tuple[int, int], to: tuple[int, int]):
         """
         Drag the mouse from the given position to the given position.
 
-        :param fr: The starting position.
+        :param from: The starting position.
         :param to: The ending position.
         """
         self.move_mouse(fr[0], fr[1])
@@ -609,7 +512,8 @@ class Sandbox(SandboxBase):
 
         :param file_or_url: The file or URL to open.
         """
-        self.commands.run(f"xdg-open {file_or_url}", background=True)
+        handle = self.commands.run(f"xdg-open {file_or_url}", background=True)
+        handle.disconnect()
 
     def get_current_window_id(self) -> str:
         """
@@ -617,7 +521,7 @@ class Sandbox(SandboxBase):
         """
         return self.commands.run("xdotool getwindowfocus").stdout.strip()
 
-    def get_application_windows(self, application: str) -> list:
+    def get_application_windows(self, application: str) -> list[str]:
         """
         Get the window IDs of all windows for the given application.
         """
@@ -637,6 +541,7 @@ class Sandbox(SandboxBase):
         """
         Launch an application.
         """
-        self.commands.run(
+        handle = self.commands.run(
             f"gtk-launch {application} {uri or ''}", background=True, timeout=0
         )
+        handle.disconnect()

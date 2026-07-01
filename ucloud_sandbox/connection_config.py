@@ -1,6 +1,6 @@
 import os
 
-from typing import Optional, Dict, TypedDict
+from typing import cast, Optional, Dict, TypedDict
 
 from httpx._types import ProxyTypes
 from typing_extensions import Unpack
@@ -11,13 +11,6 @@ REQUEST_TIMEOUT: float = 60.0  # 60 seconds
 
 KEEPALIVE_PING_INTERVAL_SEC = 50  # 50 seconds
 KEEPALIVE_PING_HEADER = "Keepalive-Ping-Interval"
-
-REGION_DOMAIN_MAP = {
-    "cn-wlcb": "cn-wlcb.sandbox.ucloudai.com",
-    "us-ca": "us-ca.sandbox.ucloudai.com",
-}
-
-DEFAULT_REGION = "cn-wlcb"
 
 
 class ApiParams(TypedDict, total=False):
@@ -31,25 +24,37 @@ class ApiParams(TypedDict, total=False):
     """Timeout for the request in **seconds**, defaults to 60 seconds."""
 
     headers: Optional[Dict[str, str]]
-    """Additional headers to send with the request."""
+    """Additional headers to send with the request. Deprecated, use api_headers instead."""
+
+    api_headers: Optional[Dict[str, str]]
+    """Additional headers to send with UCloud Sandbox API requests."""
+
+    integration: Optional[str]
+    """Integration wrapping the UCloud Sandbox SDK, appended to the User-Agent."""
 
     api_key: Optional[str]
-    """AgentBox API Key to use for authentication, defaults to `AGENTBOX_API_KEY` environment variable."""
+    """UCloud Sandbox API Key to use for authentication, defaults to `UCLOUD_SANDBOX_API_KEY` environment variable."""
+
+    validate_api_key: Optional[bool]
+    """Whether to validate the format of the UCloud Sandbox API key on the client side.
+    Disable this when your deployment issues API keys that don't match the
+    validation is disabled by default. Set `UCLOUD_SANDBOX_VALIDATE_API_KEY=true`
+    to enable a non-empty API key check."""
 
     domain: Optional[str]
-    """AgentBox domain to use, defaults to `AGENTBOX_DOMAIN` environment variable. If not set, derived from `AGENTBOX_REGION`."""
+    """UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_DOMAIN` environment variable."""
 
     api_url: Optional[str]
     """URL to use for the API, defaults to `https://api.<domain>`. For internal use only."""
 
     debug: Optional[bool]
-    """Whether to use debug mode, defaults to `AGENTBOX_DEBUG` environment variable."""
+    """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""
 
     proxy: Optional[ProxyTypes]
     """Proxy to use for the request. In case of a sandbox it applies to all **requests made to the returned sandbox**."""
 
     sandbox_url: Optional[str]
-    """URL to connect to sandbox, defaults to `AGENTBOX_SANDBOX_URL` environment variable."""
+    """URL to connect to sandbox, defaults to `UCLOUD_SANDBOX_URL` environment variable."""
 
 
 class ConnectionConfig:
@@ -60,56 +65,76 @@ class ConnectionConfig:
     envd_port = 49983
 
     @staticmethod
-    def _region():
-        return os.getenv("AGENTBOX_REGION") or DEFAULT_REGION
-
-    @staticmethod
     def _domain():
-        explicit_domain = os.getenv("AGENTBOX_DOMAIN")
-        if explicit_domain:
-            return explicit_domain
-        region = ConnectionConfig._region()
-        return REGION_DOMAIN_MAP.get(region, REGION_DOMAIN_MAP[DEFAULT_REGION])
+        return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "cn-wlcb.sandbox.ucloudai.com"
 
     @staticmethod
     def _debug():
-        return os.getenv("AGENTBOX_DEBUG", "false").lower() == "true"
+        return os.getenv("UCLOUD_SANDBOX_DEBUG", "false").lower() == "true"
 
     @staticmethod
     def _api_key():
-        return os.getenv("AGENTBOX_API_KEY")
+        return os.getenv("UCLOUD_SANDBOX_API_KEY")
+
+    @staticmethod
+    def _validate_api_key():
+        return os.getenv("UCLOUD_SANDBOX_VALIDATE_API_KEY", "false").lower() == "true"
 
     @staticmethod
     def _api_url():
-        return os.getenv("AGENTBOX_API_URL")
+        return os.getenv("UCLOUD_SANDBOX_API_URL")
 
     @staticmethod
     def _sandbox_url():
-        return os.getenv("AGENTBOX_SANDBOX_URL")
+        return os.getenv("UCLOUD_SANDBOX_URL")
 
     @staticmethod
     def _access_token():
-        return os.getenv("AGENTBOX_ACCESS_TOKEN")
+        return os.getenv("UCLOUD_SANDBOX_ACCESS_TOKEN")
+
+    @staticmethod
+    def _build_user_agent(
+        integration: Optional[str] = None,
+    ) -> str:
+        user_agent_parts = [f"ucloud-agentbox-sdk/{package_version}"]
+
+        if integration:
+            user_agent_parts.append(integration)
+
+        return " ".join(user_agent_parts)
 
     def __init__(
         self,
         domain: Optional[str] = None,
         debug: Optional[bool] = None,
         api_key: Optional[str] = None,
+        validate_api_key: Optional[bool] = None,
         api_url: Optional[str] = None,
         sandbox_url: Optional[str] = None,
         access_token: Optional[str] = None,
         request_timeout: Optional[float] = None,
         headers: Optional[Dict[str, str]] = None,
+        api_headers: Optional[Dict[str, str]] = None,
+        integration: Optional[str] = None,
         extra_sandbox_headers: Optional[Dict[str, str]] = None,
         proxy: Optional[ProxyTypes] = None,
     ):
         self.domain = domain or ConnectionConfig._domain()
-        self.debug = debug or ConnectionConfig._debug()
+        self.debug = debug if debug is not None else ConnectionConfig._debug()
         self.api_key = api_key or ConnectionConfig._api_key()
+        self.validate_api_key = (
+            validate_api_key
+            if validate_api_key is not None
+            else ConnectionConfig._validate_api_key()
+        )
+        # Deprecated: pass the token through `api_headers` instead, e.g.
+        # api_headers={"Authorization": f"Bearer {token}"}.
         self.access_token = access_token or ConnectionConfig._access_token()
-        self.headers = headers or {}
-        self.headers["User-Agent"] = f"ucloud-agentbox-sdk/{package_version}"
+        self.integration = integration
+        self.headers = {**(headers or {}), **(api_headers or {})}
+        self.headers["User-Agent"] = self._build_user_agent(
+            self.integration,
+        )
         self.__extra_sandbox_headers = extra_sandbox_headers or {}
 
         self.proxy = proxy
@@ -119,20 +144,15 @@ class ConnectionConfig:
             request_timeout,
         )
 
-        if request_timeout == 0:
-            self.request_timeout = None
-        elif request_timeout is not None:
-            self.request_timeout = request_timeout
-        else:
-            self.request_timeout = REQUEST_TIMEOUT
-
         self.api_url = (
             api_url
             or ConnectionConfig._api_url()
             or ("http://localhost:3000" if self.debug else f"https://api.{self.domain}")
         )
 
-        self._sandbox_url = sandbox_url or ConnectionConfig._sandbox_url()
+        self._sandbox_url: Optional[str] = (
+            sandbox_url or ConnectionConfig._sandbox_url()
+        )
 
     @staticmethod
     def _get_request_timeout(
@@ -151,9 +171,22 @@ class ConnectionConfig:
 
     def get_sandbox_url(self, sandbox_id: str, sandbox_domain: str) -> str:
         if self._sandbox_url:
-            return self._sandbox_url
+            return self._sandbox_url  # type: ignore[return-value]
 
-        return f"{'http' if self.debug else 'https'}://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+        if self.debug:
+            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+
+        sandbox_domain = sandbox_domain or self.domain
+        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+
+    def get_sandbox_direct_url(self, sandbox_id: str, sandbox_domain: str) -> str:
+        if self._sandbox_url:
+            return self._sandbox_url  # type: ignore[return-value]
+
+        if self.debug:
+            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+
+        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
 
     def get_host(self, sandbox_id: str, sandbox_domain: str, port: int) -> str:
         """
@@ -187,36 +220,57 @@ class ConnectionConfig:
         :return: Dictionary of parameters for the API call
         """
         headers = opts.get("headers")
+        api_headers = opts.get("api_headers")
+        integration = opts.get("integration", self.integration)
         request_timeout = opts.get("request_timeout")
         api_key = opts.get("api_key")
+        validate_api_key = opts.get("validate_api_key")
         api_url = opts.get("api_url")
         domain = opts.get("domain")
         debug = opts.get("debug")
         proxy = opts.get("proxy")
+        sandbox_url = opts.get("sandbox_url")
 
         req_headers = self.headers.copy()
         if headers is not None:
             req_headers.update(headers)
+        if api_headers is not None:
+            req_headers.update(api_headers)
+        if integration is not None:
+            req_headers["User-Agent"] = self._build_user_agent(
+                integration,
+            )
 
         return dict(
             ApiParams(
                 api_key=api_key if api_key is not None else self.api_key,
+                validate_api_key=(
+                    validate_api_key
+                    if validate_api_key is not None
+                    else self.validate_api_key
+                ),
                 api_url=api_url if api_url is not None else self.api_url,
                 domain=domain if domain is not None else self.domain,
                 debug=debug if debug is not None else self.debug,
                 request_timeout=self.get_request_timeout(request_timeout),
                 headers=req_headers,
+                integration=integration,
                 proxy=proxy if proxy is not None else self.proxy,
+                sandbox_url=(
+                    sandbox_url
+                    if sandbox_url is not None
+                    else cast(Optional[str], self._sandbox_url)
+                ),
             )
         )
 
     @property
     def sandbox_headers(self):
         """
-        We need this separate as we use the same header for access token to API and envd access token to sandbox.
+        We need this separate as we use the same header for UCloud Sandbox access token to API and envd access token to sandbox.
         """
         return {
-            **self.headers,
+            "User-Agent": self.headers["User-Agent"],
             **self.__extra_sandbox_headers,
         }
 

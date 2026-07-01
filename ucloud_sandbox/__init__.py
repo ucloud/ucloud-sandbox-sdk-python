@@ -1,11 +1,14 @@
 """
-UCloud AgentBox SDK - Secure sandboxed cloud environments for AI agents.
+Secure sandboxed cloud environments made for AI agents and AI apps.
 
-AgentBox is a secure cloud sandbox environment made for AI agents and AI apps.
+Check docs [here](https://astraflow.ucloud.cn/docs/agent-sandbox/product/01-prerequisites).
+
+UCloud Sandbox is a secure cloud sandbox environment made for AI agents and AI
+apps.
 Sandboxes allow AI agents and apps to have long running cloud secure environments.
 In these environments, large language models can use the same tools as humans do.
 
-This SDK supports both sync and async API:
+UCloud Sandbox Python SDK supports both sync and async API:
 
 ```py
 from ucloud_sandbox import Sandbox
@@ -27,19 +30,28 @@ from .api import (
     client,
 )
 from .connection_config import (
+    ApiParams,
     ConnectionConfig,
     ProxyTypes,
+    Username,
 )
+from .volume.connection_config import VolumeApiParams, VolumeConnectionConfig
 from .exceptions import (
     AuthenticationException,
+    FileNotFoundException,
+    GitAuthException,
+    GitUpstreamException,
     BuildException,
     FileUploadException,
     InvalidArgumentException,
     NotEnoughSpaceException,
     NotFoundException,
+    RateLimitException,
     SandboxException,
+    SandboxNotFoundException,
     TemplateException,
     TimeoutException,
+    VolumeException,
 )
 from .sandbox.commands.command_handle import (
     CommandExitException,
@@ -55,23 +67,40 @@ from .sandbox.filesystem.watch_handle import (
     FilesystemEvent,
     FilesystemEventType,
 )
+from .sandbox._git import GitBranches, GitFileStatus, GitResetMode, GitStatus
+from .sandbox_sync.git import Git
 from .sandbox.network import ALL_TRAFFIC
+from .sandbox.signature import get_signature
 from .sandbox.sandbox_api import (
+    GitHubMcpServer,
+    GitHubMcpServerConfig,
+    McpServer,
     SandboxInfo,
+    SandboxInfoLifecycle,
     SandboxMetrics,
+    SandboxLifecycle,
+    SandboxNetworkInfo,
     SandboxNetworkOpts,
+    SandboxNetworkRule,
+    SandboxNetworkRuleInfo,
+    SandboxNetworkRules,
+    SandboxNetworkSelector,
+    SandboxNetworkSelectorContext,
+    SandboxNetworkTransform,
+    SandboxNetworkUpdate,
     SandboxQuery,
     SandboxState,
+    SnapshotInfo,
 )
 from .sandbox_async.commands.command_handle import AsyncCommandHandle
 from .sandbox_async.filesystem.watch_handle import AsyncWatchHandle
 from .sandbox_async.main import AsyncSandbox
-from .sandbox_async.paginator import AsyncSandboxPaginator
+from .sandbox_async.paginator import AsyncSandboxPaginator, AsyncSnapshotPaginator
 from .sandbox_async.utils import OutputHandler
 from .sandbox_sync.commands.command_handle import CommandHandle
 from .sandbox_sync.filesystem.watch_handle import WatchHandle
 from .sandbox_sync.main import Sandbox
-from .sandbox_sync.paginator import SandboxPaginator
+from .sandbox_sync.paginator import SandboxPaginator, SnapshotPaginator
 from .template.logger import (
     LogEntry,
     LogEntryEnd,
@@ -88,13 +117,26 @@ from .template.readycmd import (
     wait_for_timeout,
     wait_for_url,
 )
-from .template.types import BuildInfo, CopyItem
+from .template.types import (
+    BuildInfo,
+    BuildStatusReason,
+    CopyItem,
+    TemplateBuildStatus,
+    TemplateBuildStatusResponse,
+    TemplateTag,
+    TemplateTagInfo,
+)
 from .template_async.main import AsyncTemplate
 from .template_sync.main import Template
 
-# Code Interpreter and Desktop modules are available as submodules:
-# from ucloud_sandbox.code_interpreter import Sandbox
-# from ucloud_sandbox.desktop import Sandbox
+from .volume.volume_sync import Volume
+from .volume.volume_async import AsyncVolume
+from .volume.types import (
+    VolumeInfo,
+    VolumeAndToken,
+    VolumeEntryStat,
+    VolumeFileType,
+)
 
 __all__ = [
     # API
@@ -102,24 +144,39 @@ __all__ = [
     "client",
     # Connection config
     "ConnectionConfig",
+    "VolumeConnectionConfig",
     "ProxyTypes",
+    "ApiParams",
+    "VolumeApiParams",
+    "Username",
     # Exceptions
     "SandboxException",
     "TimeoutException",
     "NotFoundException",
+    "FileNotFoundException",
+    "SandboxNotFoundException",
     "AuthenticationException",
+    "GitAuthException",
+    "GitUpstreamException",
     "InvalidArgumentException",
     "NotEnoughSpaceException",
     "TemplateException",
     "BuildException",
     "FileUploadException",
+    "RateLimitException",
+    "VolumeException",
     # Sandbox API
     "SandboxInfo",
+    "SandboxInfoLifecycle",
     "SandboxMetrics",
     "ProcessInfo",
     "SandboxQuery",
     "SandboxState",
     "SandboxMetrics",
+    "GitStatus",
+    "GitBranches",
+    "GitFileStatus",
+    "GitResetMode",
     # Command handle
     "CommandResult",
     "Stderr",
@@ -135,7 +192,22 @@ __all__ = [
     "FileType",
     # Network
     "SandboxNetworkOpts",
+    "SandboxNetworkInfo",
+    "SandboxNetworkSelector",
+    "SandboxNetworkSelectorContext",
+    "SandboxNetworkRule",
+    "SandboxNetworkRuleInfo",
+    "SandboxNetworkRules",
+    "SandboxNetworkTransform",
+    "SandboxNetworkUpdate",
+    "SandboxLifecycle",
     "ALL_TRAFFIC",
+    # Snapshot
+    "SnapshotInfo",
+    "SnapshotPaginator",
+    "AsyncSnapshotPaginator",
+    # Signature
+    "get_signature",
     # Sync sandbox
     "Sandbox",
     "SandboxPaginator",
@@ -154,6 +226,11 @@ __all__ = [
     "TemplateClass",
     "CopyItem",
     "BuildInfo",
+    "BuildStatusReason",
+    "TemplateBuildStatus",
+    "TemplateBuildStatusResponse",
+    "TemplateTag",
+    "TemplateTagInfo",
     "ReadyCmd",
     "wait_for_file",
     "wait_for_url",
@@ -165,4 +242,17 @@ __all__ = [
     "LogEntryEnd",
     "LogEntryLevel",
     "default_build_logger",
+    # MCP
+    "McpServer",
+    "GitHubMcpServer",
+    "GitHubMcpServerConfig",
+    # Git
+    "Git",
+    # Volume
+    "Volume",
+    "AsyncVolume",
+    "VolumeInfo",
+    "VolumeAndToken",
+    "VolumeEntryStat",
+    "VolumeFileType",
 ]

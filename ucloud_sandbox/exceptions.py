@@ -1,22 +1,12 @@
-from typing import Optional
-
-
-def format_sandbox_timeout_exception(message: str, trace_id: Optional[str] = None):
+def format_sandbox_timeout_exception(message: str):
     return TimeoutException(
-        f"{message}: This error is likely due to sandbox timeout. You can modify the sandbox timeout by passing 'timeout' when starting the sandbox or calling '.set_timeout' on the sandbox with the desired timeout.",
-        trace_id=trace_id,
+        f"{message}: This error is likely due to sandbox timeout. You can modify the sandbox timeout by passing 'timeout' when starting the sandbox or calling '.set_timeout' on the sandbox with the desired timeout."
     )
 
 
 def format_request_timeout_error() -> Exception:
     return TimeoutException(
         "Request timed out — the 'request_timeout' option can be used to increase this timeout",
-    )
-
-
-def format_execution_timeout_error() -> Exception:
-    return TimeoutException(
-        "Execution timed out — the 'timeout' option can be used to increase this timeout",
     )
 
 
@@ -27,18 +17,7 @@ class SandboxException(Exception):
     Raised when a general sandbox exception occurs.
     """
 
-    def __init__(self, message: str = "", trace_id: Optional[str] = None):
-        self.message = message
-        self.trace_id = trace_id
-        super().__init__(self._format_message())
-
-    def _format_message(self) -> str:
-        if self.trace_id:
-            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
-        return self.message
-
-    def __str__(self) -> str:
-        return self._format_message()
+    pass
 
 
 class TimeoutException(SandboxException):
@@ -73,6 +52,26 @@ class NotEnoughSpaceException(SandboxException):
 class NotFoundException(SandboxException):
     """
     Raised when a resource is not found.
+
+    .. deprecated::
+        Use :class:`FileNotFoundException` or :class:`SandboxNotFoundException` instead.
+        This class will be removed in the next major version.
+    """
+
+    pass
+
+
+class FileNotFoundException(NotFoundException):
+    """
+    Raised when a file or directory is not found inside a sandbox.
+    """
+
+    pass
+
+
+class SandboxNotFoundException(NotFoundException):
+    """
+    Raised when a sandbox is not found (e.g. it doesn't exist or is no longer running).
     """
 
     pass
@@ -83,18 +82,23 @@ class AuthenticationException(Exception):
     Raised when authentication fails.
     """
 
-    def __init__(self, message: str = "", trace_id: Optional[str] = None):
-        self.message = message
-        self.trace_id = trace_id
-        super().__init__(self._format_message())
+    pass
 
-    def _format_message(self) -> str:
-        if self.trace_id:
-            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
-        return self.message
 
-    def __str__(self) -> str:
-        return self._format_message()
+class GitAuthException(AuthenticationException):
+    """
+    Raised when git authentication fails.
+    """
+
+    pass
+
+
+class GitUpstreamException(SandboxException):
+    """
+    Raised when git upstream tracking is missing.
+    """
+
+    pass
 
 
 class TemplateException(SandboxException):
@@ -109,7 +113,7 @@ class RateLimitException(SandboxException):
     """
 
 
-class BuildException(SandboxException):
+class BuildException(Exception):
     """
     Raised when the build fails.
     """
@@ -118,4 +122,12 @@ class BuildException(SandboxException):
 class FileUploadException(BuildException):
     """
     Raised when the file upload fails.
+    """
+
+
+class VolumeException(Exception):
+    """
+    Base class for all volume errors.
+
+    Raised when general volume errors occur.
     """
