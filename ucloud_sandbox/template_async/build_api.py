@@ -1,6 +1,6 @@
 import asyncio
 from types import TracebackType
-from typing import Callable, Literal, Optional, List, Union
+from typing import Callable, Optional, List, Union
 
 import httpx
 
@@ -10,28 +10,48 @@ from ucloud_sandbox.api.client.api.templates import (
     get_templates_template_id_files_hash,
     post_v_2_templates_template_id_builds_build_id,
     get_templates_template_id_builds_build_id_status,
+    get_templates_aliases_alias,
+)
+from ucloud_sandbox.api.client.api.tags import (
+    post_templates_tags,
+    delete_templates_tags,
+    get_templates_template_id_tags,
 )
 from ucloud_sandbox.api.client.client import AuthenticatedClient
 from ucloud_sandbox.api.client.models import (
     TemplateBuildRequestV3,
     TemplateBuildStartV2,
     TemplateBuildFileUpload,
-    TemplateBuild,
     Error,
+    AssignTemplateTagsRequest,
+    DeleteTemplateTagsRequest,
 )
-from ucloud_sandbox.exceptions import BuildException, FileUploadException
+from ucloud_sandbox.api.client.types import UNSET, Unset
+from ucloud_sandbox.exceptions import BuildException, FileUploadException, TemplateException
 from ucloud_sandbox.template.logger import LogEntry
-from ucloud_sandbox.template.types import TemplateType
+from ucloud_sandbox.template.types import (
+    TemplateType,
+    BuildStatusReason,
+    TemplateBuildStatus,
+    TemplateBuildStatusResponse,
+    TemplateTag,
+    TemplateTagInfo,
+)
 from ucloud_sandbox.template.utils import get_build_step_index, tar_file_stream
 
 
 async def request_build(
-    client: AuthenticatedClient, name: str, cpu_count: int, memory_mb: int
+    client: AuthenticatedClient,
+    name: str,
+    tags: Optional[List[str]],
+    cpu_count: int,
+    memory_mb: int,
 ):
     res = await post_v3_templates.asyncio_detailed(
         client=client,
         body=TemplateBuildRequestV3(
-            alias=name,
+            name=name,
+            tags=tags if tags else UNSET,
             cpu_count=cpu_count,
             memory_mb=memory_mb,
         ),
@@ -91,8 +111,14 @@ async def upload_file(
             file_name, context_path, ignore_patterns, resolve_symlinks
         )
 
-        client = api_client.get_async_httpx_client()
-        response = await client.put(url, content=tar_buffer.getvalue())
+        async with httpx.AsyncClient(
+            timeout=api_client._timeout,
+            verify=api_client._verify_ssl,
+            follow_redirects=api_client._follow_redirects,
+            proxy=getattr(api_client, "_proxy", None),
+            http2=False,
+        ) as client:
+            response = await client.put(url, content=tar_buffer.getvalue())
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
         raise FileUploadException(f"Failed to upload file: {e}").with_traceback(
@@ -124,9 +150,36 @@ async def trigger_build(
         raise handle_api_exception(res, BuildException)
 
 
+def _map_log_entry(entry) -> LogEntry:
+    """Map API log entry to LogEntry type."""
+    return LogEntry(
+        timestamp=entry.timestamp,
+        level=entry.level.value,
+        message=entry.message,
+    )
+
+
+def _map_build_status_reason(reason) -> Optional[BuildStatusReason]:
+    """Map API build status reason to custom BuildStatusReason type."""
+    if reason is None or isinstance(reason, Unset):
+        return None
+    return BuildStatusReason(
+        message=reason.message,
+        step=reason.step if not isinstance(reason.step, Unset) else None,
+        log_entries=[
+            _map_log_entry(e)
+            for e in (
+                reason.log_entries
+                if not isinstance(reason.log_entries, Unset) and reason.log_entries
+                else []
+            )
+        ],
+    )
+
+
 async def get_build_status(
     client: AuthenticatedClient, template_id: str, build_id: str, logs_offset: int
-) -> TemplateBuild:
+) -> TemplateBuildStatusResponse:
     res = await get_templates_template_id_builds_build_id_status.asyncio_detailed(
         template_id=template_id,
         build_id=build_id,
@@ -143,7 +196,14 @@ async def get_build_status(
     if res.parsed is None:
         raise BuildException("Failed to get build status")
 
-    return res.parsed
+    return TemplateBuildStatusResponse(
+        build_id=res.parsed.build_id,
+        template_id=res.parsed.template_id,
+        status=TemplateBuildStatus(res.parsed.status.value),
+        log_entries=[_map_log_entry(e) for e in res.parsed.log_entries],
+        logs=res.parsed.logs,
+        reason=_map_build_status_reason(res.parsed.reason),
+    )
 
 
 async def wait_for_build_finish(
@@ -155,9 +215,10 @@ async def wait_for_build_finish(
     stack_traces: List[Union[TracebackType, None]] = [],
 ):
     logs_offset = 0
-    status: Literal["building", "waiting", "ready", "error"] = "building"
+    status = TemplateBuildStatus.BUILDING
 
-    while status in ["building", "waiting"]:
+    async def poll_status() -> TemplateBuildStatusResponse:
+        nonlocal logs_offset
         build_status = await get_build_status(
             client, template_id, build_id, logs_offset
         )
@@ -166,23 +227,26 @@ async def wait_for_build_finish(
 
         for log_entry in build_status.log_entries:
             if on_build_logs:
-                on_build_logs(
-                    LogEntry(
-                        timestamp=log_entry.timestamp,
-                        level=log_entry.level.value,
-                        message=log_entry.message,
-                    )
-                )
+                on_build_logs(log_entry)
 
-        status = build_status.status.value
+        return build_status
 
-        if status == "ready":
-            return
+    while status in [TemplateBuildStatus.BUILDING, TemplateBuildStatus.WAITING]:
+        build_status = await poll_status()
 
-        elif status == "waiting":
-            pass
+        status = build_status.status
 
-        elif status == "error":
+        if status in [TemplateBuildStatus.READY, TemplateBuildStatus.ERROR]:
+            # The status endpoint returns at most 100 log entries per call, so
+            # the terminal response may not include the last logs - keep
+            # fetching until they are drained.
+            tail_status = build_status
+            while len(tail_status.log_entries) > 0:
+                tail_status = await poll_status()
+
+            if status == TemplateBuildStatus.READY:
+                return
+
             traceback = None
             if build_status.reason and build_status.reason.step:
                 # Find the corresponding stack trace for the failed step
@@ -200,3 +264,127 @@ async def wait_for_build_finish(
         await asyncio.sleep(logs_refresh_frequency)
 
     raise BuildException("Unknown build error occurred.")
+
+
+async def check_alias_exists(client: AuthenticatedClient, alias: str) -> bool:
+    """
+    Check if a template with the given alias exists.
+
+    Args:
+        client: Authenticated API client
+        alias: Template alias to check
+
+    Returns:
+        True if the alias exists, False otherwise
+    """
+    res = await get_templates_aliases_alias.asyncio_detailed(
+        alias=alias,
+        client=client,
+    )
+
+    # If we get a NotFound, the alias doesn't exist
+    if res.status_code == 404:
+        return False
+
+    # If we get a Forbidden, alias exists, but you are not owner
+    if res.status_code == 403:
+        return True
+
+    # Handle other errors
+    if res.status_code >= 300:
+        raise handle_api_exception(res, TemplateException)
+
+    # If we get Ok with data, you are owner and the alias exists
+    return res.parsed is not None
+
+
+async def assign_tags(
+    client: AuthenticatedClient, target_name: str, tags: List[str]
+) -> TemplateTagInfo:
+    """
+    Assign tag(s) to an existing template build.
+
+    Args:
+        client: Authenticated API client
+        target_name: Template name in 'name:tag' format (the source build to tag from)
+        tags: Tags to assign
+
+    Returns:
+        TemplateTagInfo with build_id and assigned tags
+    """
+    res = await post_templates_tags.asyncio_detailed(
+        client=client,
+        body=AssignTemplateTagsRequest(
+            target=target_name,
+            tags=tags,
+        ),
+    )
+
+    if res.status_code >= 300:
+        raise handle_api_exception(res, TemplateException)
+
+    if isinstance(res.parsed, Error):
+        raise TemplateException(f"API error: {res.parsed.message}")
+
+    if res.parsed is None:
+        raise TemplateException("Failed to assign tags")
+
+    return TemplateTagInfo(
+        build_id=str(res.parsed.build_id),
+        tags=res.parsed.tags,
+    )
+
+
+async def remove_tags(client: AuthenticatedClient, name: str, tags: List[str]) -> None:
+    """
+    Remove tag(s) from a template.
+
+    Args:
+        client: Authenticated API client
+        name: Template name
+        tags: List of tags to remove
+    """
+    res = await delete_templates_tags.asyncio_detailed(
+        client=client,
+        body=DeleteTemplateTagsRequest(
+            name=name,
+            tags=tags,
+        ),
+    )
+
+    if res.status_code >= 300:
+        raise handle_api_exception(res, TemplateException)
+
+
+async def get_template_tags(
+    client: AuthenticatedClient, template_id: str
+) -> List[TemplateTag]:
+    """
+    Get all tags for a template.
+
+    Args:
+        client: Authenticated API client
+        template_id: Template ID or name
+    """
+    res = await get_templates_template_id_tags.asyncio_detailed(
+        template_id=template_id,
+        client=client,
+    )
+
+    if res.status_code >= 300:
+        raise handle_api_exception(res, TemplateException)
+
+    if isinstance(res.parsed, Error):
+        raise TemplateException(f"API error: {res.parsed.message}")
+
+    if res.parsed is None:
+        raise TemplateException("Failed to get template tags")
+
+    return [
+        TemplateTag(
+            tag=item.tag,
+            build_id=str(item.build_id),
+            created_at=item.created_at,
+        )
+        for item in res.parsed
+    ]

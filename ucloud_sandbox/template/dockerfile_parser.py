@@ -5,7 +5,6 @@ import tempfile
 from typing import Dict, List, Optional, Protocol, Union, Literal
 
 from dockerfile_parse import DockerfileParser
-from ucloud_sandbox.template.types import CopyItem
 
 
 class DockerfFileFinalParserInterface(Protocol):
@@ -23,12 +22,12 @@ class DockerfileParserInterface(Protocol):
 
     def copy(
         self,
-        src: Union[str, List[CopyItem]],
-        dest: Optional[str] = None,
+        src: str,
+        dest: str,
         force_upload: Optional[Literal[True]] = None,
-        resolve_symlinks: Optional[bool] = None,
         user: Optional[str] = None,
         mode: Optional[int] = None,
+        resolve_symlinks: Optional[bool] = None,
     ) -> "DockerfileParserInterface":
         """Handle COPY instruction."""
         ...
@@ -135,7 +134,7 @@ def parse_dockerfile(
                 print(f"Unsupported instruction: {instruction}")
                 continue
 
-    # Set the user and workdir to the E2B defaults
+    # Set the user and workdir to the UCloud Sandbox defaults
     if not user_changed:
         template_builder.set_user("user")
     if not workdir_changed:
@@ -191,10 +190,21 @@ def _handle_copy_instruction(
     if current_part:
         parts.append(current_part)
 
-    if len(parts) >= 2:
-        src = parts[0]
-        dest = parts[-1]  # Last part is destination
-        template_builder.copy(src, dest)
+    # Extract --chown flag and separate from paths
+    user = None
+    non_flag_parts = []
+    for part in parts:
+        if part.startswith("--chown="):
+            user = part[8:]  # Extract value after "--chown="
+        elif not part.startswith("--"):
+            non_flag_parts.append(part)
+
+    if len(non_flag_parts) >= 2:
+        dest = non_flag_parts[-1]  # Last part is destination
+        sources = non_flag_parts[:-1]
+
+        for src in sources:
+            template_builder.copy(src, dest, user=user)
 
 
 def _handle_workdir_instruction(

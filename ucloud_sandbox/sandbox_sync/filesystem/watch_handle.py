@@ -1,12 +1,13 @@
-from typing import List
+from typing import Callable, List, Optional
 
-from ucloud_sandbox.exceptions import SandboxException
+from ucloud_sandbox import SandboxException
 from ucloud_sandbox.envd.filesystem import filesystem_connect
 from ucloud_sandbox.envd.filesystem.filesystem_pb2 import (
     GetWatcherEventsRequest,
     RemoveWatcherRequest,
 )
-from ucloud_sandbox.envd.rpc import handle_rpc_exception
+from ucloud_sandbox.envd.rpc import handle_rpc_exception_with_health
+from ucloud_sandbox.sandbox.filesystem.filesystem import map_entry_info
 from ucloud_sandbox.sandbox.filesystem.watch_handle import FilesystemEvent, map_event_type
 
 
@@ -20,11 +21,13 @@ class WatchHandle:
 
     def __init__(
         self,
-        rpc: filesystem_connect.FilesystemClient,
+        get_rpc: Callable[[], filesystem_connect.FilesystemClient],
         watcher_id: str,
+        check_health: Optional[Callable[[], Optional[bool]]] = None,
     ):
-        self._rpc = rpc
+        self._get_rpc = get_rpc
         self._watcher_id = watcher_id
+        self._check_health = check_health
         self._closed = False
 
     def stop(self):
@@ -33,9 +36,11 @@ class WatchHandle:
         After you stop the watcher you won't be able to get the events anymore.
         """
         try:
-            self._rpc.remove_watcher(RemoveWatcherRequest(watcher_id=self._watcher_id))
+            self._get_rpc().remove_watcher(
+                RemoveWatcherRequest(watcher_id=self._watcher_id)
+            )
         except Exception as e:
-            raise handle_rpc_exception(e)
+            raise handle_rpc_exception_with_health(e, self._check_health)
 
         self._closed = True
 
@@ -49,11 +54,11 @@ class WatchHandle:
             raise SandboxException("The watcher is already stopped")
 
         try:
-            r = self._rpc.get_watcher_events(
+            r = self._get_rpc().get_watcher_events(
                 GetWatcherEventsRequest(watcher_id=self._watcher_id)
             )
         except Exception as e:
-            raise handle_rpc_exception(e)
+            raise handle_rpc_exception_with_health(e, self._check_health)
 
         events = []
         for event in r.events:
@@ -63,6 +68,11 @@ class WatchHandle:
                     FilesystemEvent(
                         name=event.name,
                         type=event_type,
+                        entry=(
+                            map_entry_info(event.entry)
+                            if event.HasField("entry")
+                            else None
+                        ),
                     )
                 )
 

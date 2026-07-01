@@ -1,16 +1,21 @@
-import os
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Union
+
+from typing_extensions import Unpack
 
 from ucloud_sandbox.api.client.client import AuthenticatedClient
-from ucloud_sandbox.connection_config import ConnectionConfig
+from ucloud_sandbox.connection_config import ApiParams, ConnectionConfig
 
 from ucloud_sandbox.api.client_sync import get_api_client
 from ucloud_sandbox.template.consts import RESOLVE_SYMLINKS
 from ucloud_sandbox.template.logger import LogEntry, LogEntryEnd, LogEntryStart
 from ucloud_sandbox.template.main import TemplateBase, TemplateClass
-from ucloud_sandbox.template.types import BuildInfo, InstructionType
+from ucloud_sandbox.template.types import BuildInfo, InstructionType, TemplateTag, TemplateTagInfo
 from ucloud_sandbox.template_sync.build_api import (
+    assign_tags,
+    check_alias_exists,
+    get_template_tags,
+    remove_tags,
     get_build_status,
     get_file_upload_link,
     request_build,
@@ -18,30 +23,32 @@ from ucloud_sandbox.template_sync.build_api import (
     upload_file,
     wait_for_build_finish,
 )
-from ucloud_sandbox.template.utils import read_dockerignore
+from ucloud_sandbox.template.utils import normalize_build_arguments, read_dockerignore
 
 
 class Template(TemplateBase):
     """
-    Synchronous template builder for AgentBox sandboxes.
+    Synchronous template builder for UCloud Sandbox sandboxes.
     """
 
     @staticmethod
     def _build(
-        template: TemplateClass,
         api_client: AuthenticatedClient,
-        alias: str,
+        template: TemplateClass,
+        name: str,
+        tags: Optional[List[str]] = None,
         cpu_count: int = 2,
-        memory_mb: int = 2048,
+        memory_mb: int = 1024,
         skip_cache: bool = False,
         on_build_logs: Optional[Callable[[LogEntry], None]] = None,
     ) -> BuildInfo:
         """
         Internal implementation of the template build process
 
-        :param template: The template to build
         :param api_client: Authenticated API client
-        :param alias: Alias name for the template
+        :param template: The template to build
+        :param name: Name for the template
+        :param tags: Optional tags for the template
         :param cpu_count: Number of CPUs allocated to the sandbox
         :param memory_mb: Amount of memory in MB allocated to the sandbox
         :param skip_cache: If True, forces a complete rebuild ignoring cache
@@ -52,23 +59,26 @@ class Template(TemplateBase):
 
         # Create template
         if on_build_logs:
+            tags_msg = f" with tags: {', '.join(tags)}" if tags else ""
             on_build_logs(
                 LogEntry(
                     timestamp=datetime.now(),
                     level="info",
-                    message=f"Requesting build for template: {alias}",
+                    message=f"Requesting build for template: {name}{tags_msg}",
                 )
             )
 
         response = request_build(
             api_client,
-            name=alias,
+            name=name,
             cpu_count=cpu_count,
             memory_mb=memory_mb,
+            tags=tags,
         )
 
         template_id = response.template_id
         build_id = response.build_id
+        response_tags = response.tags
 
         if on_build_logs:
             on_build_logs(
@@ -163,33 +173,37 @@ class Template(TemplateBase):
         )
 
         return BuildInfo(
-            alias=alias,
             template_id=template_id,
             build_id=build_id,
+            alias=name,
+            name=name,
+            tags=response_tags,
         )
 
     @staticmethod
     def build(
         template: TemplateClass,
-        alias: str,
+        name: Optional[str] = None,
+        *,
+        alias: Optional[str] = None,
+        tags: Optional[List[str]] = None,
         cpu_count: int = 2,
-        memory_mb: int = 2048,
+        memory_mb: int = 1024,
         skip_cache: bool = False,
         on_build_logs: Optional[Callable[[LogEntry], None]] = None,
-        api_key: Optional[str] = None,
-        domain: Optional[str] = None,
+        **opts: Unpack[ApiParams],
     ) -> BuildInfo:
         """
-        Build and deploy a template to AgentBox infrastructure.
+        Build and deploy a template to UCloud Sandbox infrastructure.
 
         :param template: The template to build
-        :param alias: Alias name for the template
+        :param name: Template name in 'name' or 'name:tag' format
+        :param alias: (Deprecated) Alias name for the template. Use name instead.
+        :param tags: Optional additional tags to assign to the template
         :param cpu_count: Number of CPUs allocated to the sandbox
         :param memory_mb: Amount of memory in MB allocated to the sandbox
         :param skip_cache: If True, forces a complete rebuild ignoring cache
         :param on_build_logs: Callback function to receive build logs during the build process
-        :param api_key: AgentBox API key for authentication
-        :param domain: Domain of the AgentBox API
 
         Example
         ```python
@@ -202,14 +216,15 @@ class Template(TemplateBase):
             .run_cmd('pip install -r /home/user/requirements.txt')
         )
 
-        Template.build(
-            template,
-            alias='my-python-env',
-            cpu_count=2,
-            memory_mb=1024
-        )
+        # Build with single tag
+        Template.build(template, 'my-python-env:v1.0')
+
+        # Build with multiple tags
+        Template.build(template, 'my-python-env', tags=['v1.1.0', 'stable'])
         ```
         """
+        name = normalize_build_arguments(name, alias)
+
         try:
             if on_build_logs:
                 on_build_logs(
@@ -219,23 +234,20 @@ class Template(TemplateBase):
                     )
                 )
 
-            config = ConnectionConfig(
-                domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
-            )
+            config = ConnectionConfig(**opts)
             api_client = get_api_client(
                 config,
-                require_api_key=True,
-                require_access_token=False,
             )
 
             data = Template._build(
-                template,
                 api_client,
-                alias,
-                cpu_count,
-                memory_mb,
-                skip_cache,
-                on_build_logs,
+                template,
+                name,
+                tags=tags,
+                cpu_count=cpu_count,
+                memory_mb=memory_mb,
+                skip_cache=skip_cache,
+                on_build_logs=on_build_logs,
             )
 
             if on_build_logs:
@@ -269,24 +281,26 @@ class Template(TemplateBase):
     @staticmethod
     def build_in_background(
         template: TemplateClass,
-        alias: str,
+        name: Optional[str] = None,
+        *,
+        alias: Optional[str] = None,
+        tags: Optional[List[str]] = None,
         cpu_count: int = 2,
-        memory_mb: int = 2048,
+        memory_mb: int = 1024,
         skip_cache: bool = False,
         on_build_logs: Optional[Callable[[LogEntry], None]] = None,
-        api_key: Optional[str] = None,
-        domain: Optional[str] = None,
+        **opts: Unpack[ApiParams],
     ) -> BuildInfo:
         """
-        Build and deploy a template to AgentBox infrastructure without waiting for completion.
+        Build and deploy a template to UCloud Sandbox infrastructure without waiting for completion.
 
         :param template: The template to build
-        :param alias: Alias name for the template
+        :param name: Template name in 'name' or 'name:tag' format
+        :param alias: (Deprecated) Alias name for the template. Use name instead.
+        :param tags: Optional additional tags to assign to the template
         :param cpu_count: Number of CPUs allocated to the sandbox
         :param memory_mb: Amount of memory in MB allocated to the sandbox
         :param skip_cache: If True, forces a complete rebuild ignoring cache
-        :param api_key: AgentBox API key for authentication
-        :param domain: Domain of the AgentBox API
         :return: BuildInfo containing the template ID and build ID
 
         Example
@@ -300,47 +314,42 @@ class Template(TemplateBase):
             .set_start_cmd('echo "Hello"', 'sleep 1')
         )
 
-        build_info = Template.build_in_background(
-            template,
-            alias='my-python-env',
-            cpu_count=2,
-            memory_mb=1024
-        )
+        # Build with single tag
+        build_info = Template.build_in_background(template, 'my-python-env:v1.0')
+
+        # Build with multiple tags
+        build_info = Template.build_in_background(template, 'my-python-env', tags=['v1.1.0', 'stable'])
         ```
         """
-        config = ConnectionConfig(
-            domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
-        )
+        name = normalize_build_arguments(name, alias)
+
+        config = ConnectionConfig(**opts)
         api_client = get_api_client(
             config,
-            require_api_key=True,
-            require_access_token=False,
         )
 
         return Template._build(
-            template,
             api_client,
-            alias,
-            cpu_count,
-            memory_mb,
-            skip_cache,
-            on_build_logs,
+            template,
+            name,
+            tags=tags,
+            cpu_count=cpu_count,
+            memory_mb=memory_mb,
+            skip_cache=skip_cache,
+            on_build_logs=on_build_logs,
         )
 
     @staticmethod
     def get_build_status(
         build_info: BuildInfo,
         logs_offset: int = 0,
-        api_key: Optional[str] = None,
-        domain: Optional[str] = None,
+        **opts: Unpack[ApiParams],
     ):
         """
         Get the status of a build.
 
         :param build_info: Build identifiers returned from build_in_background
         :param logs_offset: Offset for fetching logs
-        :param api_key: AgentBox API key for authentication
-        :param domain: Domain of the AgentBox API
         :return: TemplateBuild containing the build status and logs
 
         Example
@@ -351,13 +360,9 @@ class Template(TemplateBase):
         status = Template.get_build_status(build_info, logs_offset=0)
         ```
         """
-        config = ConnectionConfig(
-            domain=domain, api_key=api_key or os.environ.get("AGENTBOX_API_KEY")
-        )
+        config = ConnectionConfig(**opts)
         api_client = get_api_client(
             config,
-            require_api_key=True,
-            require_access_token=False,
         )
 
         return get_build_status(
@@ -366,3 +371,145 @@ class Template(TemplateBase):
             build_info.build_id,
             logs_offset,
         )
+
+    @staticmethod
+    def exists(
+        name: str,
+        **opts: Unpack[ApiParams],
+    ) -> bool:
+        """
+        Check if a template with the given name exists.
+
+        :param name: Template name to check
+        :return: True if the name exists, False otherwise
+
+        Example
+        ```python
+        from ucloud_sandbox import Template
+
+        exists = Template.exists('my-python-env')
+        if exists:
+            print('Template exists!')
+        ```
+        """
+
+        return Template.alias_exists(name, **opts)
+
+    @staticmethod
+    def alias_exists(
+        alias: str,
+        **opts: Unpack[ApiParams],
+    ) -> bool:
+        """
+        Check if a template with the given alias exists.
+
+        Deprecated Use `exists` instead.
+
+        :param alias: Template alias to check
+        :return: True if the alias exists, False otherwise
+
+        Example
+        ```python
+        from ucloud_sandbox import Template
+
+        exists = Template.alias_exists('my-python-env')
+        if exists:
+            print('Template exists!')
+        ```
+        """
+        config = ConnectionConfig(**opts)
+        api_client = get_api_client(
+            config,
+        )
+
+        return check_alias_exists(api_client, alias)
+
+    @staticmethod
+    def assign_tags(
+        target_name: str,
+        tags: Union[str, List[str]],
+        **opts: Unpack[ApiParams],
+    ) -> TemplateTagInfo:
+        """
+        Assign tag(s) to an existing template build.
+
+        :param target_name: Template name in 'name:tag' format (the source build to tag from)
+        :param tags: Tag or tags to assign
+        :return: TemplateTagInfo with build_id and assigned tags
+
+        Example
+        ```python
+        from ucloud_sandbox import Template
+
+        # Assign a single tag
+        result = Template.assign_tags('my-template:v1.0', 'production')
+
+        # Assign multiple tags
+        result = Template.assign_tags('my-template:v1.0', ['production', 'stable'])
+        ```
+        """
+        config = ConnectionConfig(**opts)
+        api_client = get_api_client(
+            config,
+        )
+
+        normalized_tags = [tags] if isinstance(tags, str) else tags
+        return assign_tags(api_client, target_name, normalized_tags)
+
+    @staticmethod
+    def remove_tags(
+        name: str,
+        tags: Union[str, List[str]],
+        **opts: Unpack[ApiParams],
+    ) -> None:
+        """
+        Remove tag(s) from a template.
+
+        :param name: Template name
+        :param tags: Tag or tags to remove
+
+        Example
+        ```python
+        from ucloud_sandbox import Template
+
+        # Remove a single tag
+        Template.remove_tags('my-template', 'production')
+
+        # Remove multiple tags
+        Template.remove_tags('my-template', ['production', 'stable'])
+        ```
+        """
+        config = ConnectionConfig(**opts)
+        api_client = get_api_client(
+            config,
+        )
+
+        normalized_tags = [tags] if isinstance(tags, str) else tags
+        remove_tags(api_client, name, normalized_tags)
+
+    @staticmethod
+    def get_tags(
+        template_id: str,
+        **opts: Unpack[ApiParams],
+    ) -> List[TemplateTag]:
+        """
+        Get all tags for a template.
+
+        :param template_id: Template ID or name
+        :return: List of TemplateTag with tag name, build_id, and created_at
+
+        Example
+        ```python
+        from ucloud_sandbox import Template
+
+        tags = Template.get_tags('my-template')
+        for tag in tags:
+            print(f"Tag: {tag.tag}, Build: {tag.build_id}, Created: {tag.created_at}")
+        ```
+        """
+        config = ConnectionConfig(**opts)
+        api_client = get_api_client(
+            config,
+        )
+
+        return get_template_tags(api_client, template_id)

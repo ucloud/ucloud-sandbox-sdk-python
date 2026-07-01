@@ -216,7 +216,7 @@ def default_build_logger(
 
     Example
     ```python
-    from e2b import Template, default_build_logger
+    from ucloud_sandbox import Template, default_build_logger
 
     template = Template().from_python_image()
 

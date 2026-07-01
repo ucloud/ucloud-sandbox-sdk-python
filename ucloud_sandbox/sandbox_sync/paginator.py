@@ -1,12 +1,21 @@
 import urllib.parse
 from typing import Optional, List
 
+from typing_extensions import Unpack
+
 from ucloud_sandbox.api import handle_api_exception
 from ucloud_sandbox.api.client.api.sandboxes import get_v2_sandboxes
+from ucloud_sandbox.api.client.api.snapshots import get_snapshots
 from ucloud_sandbox.api.client.models.error import Error
 from ucloud_sandbox.api.client.types import UNSET
+from ucloud_sandbox.connection_config import ApiParams, ConnectionConfig
 from ucloud_sandbox.exceptions import SandboxException
-from ucloud_sandbox.sandbox.sandbox_api import SandboxPaginatorBase, SandboxInfo
+from ucloud_sandbox.sandbox.sandbox_api import (
+    SandboxPaginatorBase,
+    SandboxInfo,
+    SnapshotPaginatorBase,
+    SnapshotInfo,
+)
 from ucloud_sandbox.api.client_sync import get_api_client
 
 
@@ -24,11 +33,15 @@ class SandboxPaginator(SandboxPaginatorBase):
     ```
     """
 
-    def next_items(self) -> List[SandboxInfo]:
+    def next_items(self, **opts: Unpack[ApiParams]) -> List[SandboxInfo]:
         """
         Returns the next page of sandboxes.
 
         Call this method only if `has_next` is `True`, otherwise it will raise an exception.
+
+        :param opts: Per-call connection options (e.g. `api_key`, `domain`,
+            `headers`, `request_timeout`). When provided, this call uses these
+            options instead of the ones the paginator was constructed with.
 
         :returns: List of sandboxes
         """
@@ -44,7 +57,8 @@ class SandboxPaginator(SandboxPaginatorBase):
             }
             metadata = urllib.parse.urlencode(quoted_metadata)
 
-        api_client = get_api_client(self._config)
+        config = ConnectionConfig(**{**self._opts, **opts})
+        api_client = get_api_client(config)
         res = get_v2_sandboxes.sync_detailed(
             client=api_client,
             metadata=metadata if metadata else UNSET,
@@ -62,8 +76,67 @@ class SandboxPaginator(SandboxPaginatorBase):
         if res.parsed is None:
             return []
 
-        # Check if res.parse is Error
+        # Check if res.parsed is Error
         if isinstance(res.parsed, Error):
             raise SandboxException(f"{res.parsed.message}: Request failed")
 
         return [SandboxInfo._from_listed_sandbox(sandbox) for sandbox in res.parsed]
+
+
+class SnapshotPaginator(SnapshotPaginatorBase):
+    """
+    Paginator for listing snapshots.
+
+    Example:
+    ```python
+    paginator = Sandbox.list_snapshots()
+
+    while paginator.has_next:
+        snapshots = paginator.next_items()
+        print(snapshots)
+    ```
+    """
+
+    def next_items(self, **opts: Unpack[ApiParams]) -> List[SnapshotInfo]:
+        """
+        Returns the next page of snapshots.
+
+        Call this method only if `has_next` is `True`, otherwise it will raise an exception.
+
+        :param opts: Per-call connection options (e.g. `api_key`, `domain`,
+            `headers`, `request_timeout`). When provided, this call uses these
+            options instead of the ones the paginator was constructed with.
+
+        :returns: List of snapshots
+        """
+        if not self.has_next:
+            raise Exception("No more items to fetch")
+
+        config = ConnectionConfig(**{**self._opts, **opts})
+        api_client = get_api_client(config)
+        res = get_snapshots.sync_detailed(
+            client=api_client,
+            sandbox_id=self.sandbox_id if self.sandbox_id else UNSET,
+            limit=self.limit if self.limit else UNSET,
+            next_token=self._next_token if self._next_token else UNSET,
+        )
+
+        if res.status_code >= 300:
+            raise handle_api_exception(res)
+
+        self._next_token = res.headers.get("x-next-token")
+        self._has_next = bool(self._next_token)
+
+        if res.parsed is None:
+            return []
+
+        if isinstance(res.parsed, Error):
+            raise SandboxException(f"{res.parsed.message}: Request failed")
+
+        return [
+            SnapshotInfo(
+                snapshot_id=snapshot.snapshot_id,
+                names=list(snapshot.names) if snapshot.names else [],
+            )
+            for snapshot in res.parsed
+        ]

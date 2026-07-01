@@ -61,19 +61,9 @@ def make_error_from_http_code(http_code: int):
 
 
 class ConnectException(Exception):
-    def __init__(self, status: Code, message: str, trace_id: str = None):
+    def __init__(self, status: Code, message: str):
         self.status = status
         self.message = message
-        self.trace_id = trace_id
-        super().__init__(self._format_message())
-
-    def _format_message(self) -> str:
-        if self.trace_id:
-            return f"{self.message} [X-Trace-ID: {self.trace_id}]"
-        return self.message
-
-    def __str__(self) -> str:
-        return self._format_message()
 
 
 envelope_header_length = 5
@@ -94,28 +84,15 @@ def decode_envelope_header(header):
 
 
 def error_for_response(http_resp: Response):
-    trace_id = None
-    # Try to get X-Trace-ID from headers
-    if hasattr(http_resp, 'headers'):
-        headers = http_resp.headers
-        if isinstance(headers, (list, tuple)):
-            # httpcore returns headers as list of tuples
-            for name, value in headers:
-                if name.lower() == b'x-trace-id':
-                    trace_id = value.decode('utf-8') if isinstance(value, bytes) else value
-                    break
-        elif hasattr(headers, 'get'):
-            trace_id = headers.get("X-Trace-ID") or headers.get("x-trace-id")
-
     try:
         error = json.loads(http_resp.content)
-        return make_error(error, trace_id)
+        return make_error(error)
     except (json.decoder.JSONDecodeError, KeyError):
         error = {"code": http_resp.status, "message": http_resp.content.decode("utf-8")}
-        return make_error(error, trace_id)
+        return make_error(error)
 
 
-def make_error(error, trace_id: str = None):
+def make_error(error):
     status = None
     try:
         code_value = error.get("code")
@@ -127,7 +104,7 @@ def make_error(error, trace_id: str = None):
     except (KeyError, ValueError):
         status = Code.unknown
 
-    return ConnectException(status, error.get("message", ""), trace_id)
+    return ConnectException(status, error.get("message", ""))
 
 
 def _sync_retry(func, exc, retries):
@@ -328,9 +305,9 @@ class Client:
         res = self.pool.request(**req_data)
         return self._process_unary_response(res)
 
-    def _create_stream_timeout(self, timeout: Optional[int]):
+    def _create_stream_timeout(self, timeout: Optional[float]):
         if timeout:
-            return {"connect-timeout-ms": str(timeout * 1000)}
+            return {"connect-timeout-ms": str(int(timeout * 1000))}
         return {}
 
     def _prepare_server_stream_request(
@@ -345,11 +322,20 @@ class Client:
         data = self._codec.encode(req)
         flags = EnvelopeFlags(0)
 
-        extensions = (
-            None
-            if request_timeout is None
-            else {"timeout": {"connect": request_timeout, "pool": request_timeout}}
-        )
+        # `request_timeout` bounds connection setup and request sending, but NOT the
+        # stream read: a stream can stay open for the whole command `timeout` (minutes
+        # or, when disabled, indefinitely), so we deliberately leave `read` unset.
+        # The command `timeout` is enforced server-side via the `connect-timeout-ms`
+        # header (see `_create_stream_timeout`), which returns a clean `deadline_exceeded`.
+        # This mirrors the JS SDK, which has no per-chunk read timeout either — setting
+        # `read` to the command `timeout` would race that server response and surface a
+        # raw transport `ReadTimeout` instead.
+        timeout_ext = {}
+        if request_timeout is not None:
+            timeout_ext["connect"] = request_timeout
+            timeout_ext["pool"] = request_timeout
+            timeout_ext["write"] = request_timeout
+        extensions = {"timeout": timeout_ext} if timeout_ext else None
 
         if self._compressor is not None:
             data = self._compressor.compress(data)
@@ -378,7 +364,8 @@ class Client:
             },
         }
 
-    @_retry(RemoteProtocolError, 3)
+    # Note: no retry here — generator functions don't execute until iterated, so a
+    # call-level retry never fires, and retrying mid-stream would replay delivered events.
     async def acall_server_stream(
         self,
         req,
@@ -412,7 +399,6 @@ class Client:
                 for parsed in parser.parse(chunk):
                     yield parsed
 
-    @_retry(RemoteProtocolError, 3)
     def call_server_stream(
         self,
         req,
@@ -496,7 +482,10 @@ class ServerStreamParser:
     def parse(self, chunk: bytes) -> Generator[Any, None, None]:
         self.buffer += chunk
 
-        while len(self.buffer) >= envelope_header_length:
+        # Once the header is consumed, the remaining payload can be shorter
+        # than the header length, so only require a full header when we still
+        # need to read one.
+        while self._header is not None or len(self.buffer) >= envelope_header_length:
             flags, data_len = self.header
 
             if data_len > len(self.buffer):

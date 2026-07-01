@@ -1,24 +1,20 @@
-"""
-Synchronous Code Interpreter Sandbox.
-"""
-
 import logging
 import httpx
 
-from typing import Optional, Dict, overload, Literal, Union, List
+from typing import Optional, Dict, overload, Union, List
 from httpx import Client
+from ucloud_sandbox import Sandbox as BaseSandbox, InvalidArgumentException
+from ucloud_sandbox.api.client_sync import get_transport
 
-from ucloud_sandbox.sandbox_sync.main import Sandbox as BaseSandbox
-from ucloud_sandbox.exceptions import InvalidArgumentException
-
-from .constants import (
+from ucloud_sandbox.code_interpreter.constants import (
     DEFAULT_TEMPLATE,
     JUPYTER_PORT,
     DEFAULT_TIMEOUT,
 )
-from .models import (
+from ucloud_sandbox.code_interpreter.models import (
     ExecutionError,
     Execution,
+    RunCodeLanguage,
     Context,
     Result,
     extract_exception,
@@ -26,9 +22,10 @@ from .models import (
     OutputHandler,
     OutputMessage,
 )
-from .exceptions import (
+from ucloud_sandbox.code_interpreter.exceptions import (
     format_execution_timeout_error,
     format_request_timeout_error,
+    format_sandbox_killed_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,24 +33,24 @@ logger = logging.getLogger(__name__)
 
 class Sandbox(BaseSandbox):
     """
-    UCloud Sandbox Code Interpreter - Stateful code execution in cloud sandbox.
+    UCloud Sandbox is a secure and isolated cloud environment.
 
-    The Code Interpreter allows you to:
+    The sandbox allows you to:
     - Access Linux OS
     - Create, list, and delete files and directories
     - Run commands
-    - Run isolated code with stateful execution (variables persist between runs)
+    - Run isolated code
     - Access the internet
 
-    Use the `CodeInterpreter.create()` to create a new sandbox.
+    Check docs [here](https://astraflow.ucloud.cn/docs/agent-sandbox/product/01-prerequisites).
+
+    Use the `Sandbox.create()` to create a new sandbox.
 
     Example:
     ```python
-    from ucloud_sandbox import CodeInterpreter
+    from ucloud_sandbox.code_interpreter import Sandbox
 
-    sandbox = CodeInterpreter.create()
-    execution = sandbox.run_code("x = 1 + 1")
-    execution = sandbox.run_code("print(x)")  # prints 2
+    sandbox = Sandbox.create()
     ```
     """
 
@@ -65,47 +62,44 @@ class Sandbox(BaseSandbox):
 
     @property
     def _client(self) -> Client:
-        return Client(transport=self._transport)
+        # TODO: Remove later
+        # Use a dedicated HTTP/1.1 transport for Jupyter requests.
+        #
+        # The base SDK's shared transport now defaults to http2=True. With
+        # HTTP/2, multiple requests are multiplexed over a single TCP
+        # connection, so when a client cancels a request (e.g. the caller
+        # disconnects from the streaming `/execute` endpoint) the server
+        # may not detect the disconnect: only the HTTP/2 stream is
+        # cancelled, the underlying TCP connection stays open.
+        #
+        # Forcing HTTP/1.1 here keeps the 1:1 mapping between TCP
+        # connection and request, so client disconnects propagate to the
+        # server as a TCP close and long-running executions can be
+        # cancelled reliably.
+        return Client(transport=get_transport(self.connection_config, http2=False))
+
+    def _handle_connection_error(self, err: Exception) -> None:
+        """
+        Raises a descriptive exception if the connection error was caused by
+        the sandbox being killed mid-request. If the sandbox is still running
+        (or its state can't be determined), returns so the caller can re-raise
+        the original error.
+        """
+        try:
+            running = self.is_running()
+        except Exception:
+            # The state check itself failed, so we can't tell whether the
+            # sandbox was killed — let the caller re-raise the original error
+            # instead of wrongly claiming the sandbox is gone.
+            return
+        if not running:
+            raise format_sandbox_killed_error() from err
 
     @overload
     def run_code(
         self,
         code: str,
-        language: Union[Literal["python"], None] = None,
-        on_stdout: Optional[OutputHandler[OutputMessage]] = None,
-        on_stderr: Optional[OutputHandler[OutputMessage]] = None,
-        on_result: Optional[OutputHandler[Result]] = None,
-        on_error: Optional[OutputHandler[ExecutionError]] = None,
-        envs: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None,
-        request_timeout: Optional[float] = None,
-    ) -> Execution:
-        """
-        Runs the code as Python.
-
-        Specify the `language` or `context` option to run the code as a different language or in a different `Context`.
-
-        You can reference previously defined variables, imports, and functions in the code.
-
-        :param code: Code to execute
-        :param language: Language to use for code execution. If not defined, the default Python context is used.
-        :param on_stdout: Callback for stdout messages
-        :param on_stderr: Callback for stderr messages
-        :param on_result: Callback for the `Result` object
-        :param on_error: Callback for the `ExecutionError` object
-        :param envs: Custom environment variables
-        :param timeout: Timeout for the code execution in **seconds**
-        :param request_timeout: Timeout for the request in **seconds**
-
-        :return: `Execution` result object
-        """
-        ...
-
-    @overload
-    def run_code(
-        self,
-        code: str,
-        language: Optional[str] = None,
+        language: Optional[RunCodeLanguage] = None,
         on_stdout: Optional[OutputHandler[OutputMessage]] = None,
         on_stderr: Optional[OutputHandler[OutputMessage]] = None,
         on_result: Optional[OutputHandler[Result]] = None,
@@ -157,7 +151,7 @@ class Sandbox(BaseSandbox):
         You can reference previously defined variables, imports, and functions in the code.
 
         :param code: Code to execute
-        :param context: Concrete context to run the code in. It's mutually exclusive with the language.
+        :param context: Concrete context to run the code in. If not specified, the default context for the language is used. It's mutually exclusive with the language.
         :param on_stdout: Callback for stdout messages
         :param on_stderr: Callback for stderr messages
         :param on_result: Callback for the `Result` object
@@ -234,11 +228,14 @@ class Sandbox(BaseSandbox):
             raise format_execution_timeout_error()
         except httpx.TimeoutException:
             raise format_request_timeout_error()
+        except (httpx.ReadError, httpx.RemoteProtocolError) as err:
+            self._handle_connection_error(err)
+            raise
 
     def create_code_context(
         self,
         cwd: Optional[str] = None,
-        language: Optional[str] = None,
+        language: Optional[RunCodeLanguage] = None,
         request_timeout: Optional[float] = None,
     ) -> Context:
         """
@@ -246,7 +243,7 @@ class Sandbox(BaseSandbox):
 
         :param cwd: Set the current working directory for the context, defaults to `/home/user`
         :param language: Language of the context. If not specified, defaults to Python
-        :param request_timeout: Timeout for the request in **seconds**
+        :param request_timeout: Timeout for the request in **milliseconds**
 
         :return: Context object
         """
@@ -280,6 +277,9 @@ class Sandbox(BaseSandbox):
             return Context.from_json(data)
         except httpx.TimeoutException:
             raise format_request_timeout_error()
+        except (httpx.ReadError, httpx.RemoteProtocolError) as err:
+            self._handle_connection_error(err)
+            raise
 
     def remove_code_context(
         self,
@@ -312,6 +312,9 @@ class Sandbox(BaseSandbox):
                 raise err
         except httpx.TimeoutException:
             raise format_request_timeout_error()
+        except (httpx.ReadError, httpx.RemoteProtocolError) as err:
+            self._handle_connection_error(err)
+            raise
 
     def list_code_contexts(self) -> List[Context]:
         """
@@ -340,6 +343,9 @@ class Sandbox(BaseSandbox):
             return [Context.from_json(context_data) for context_data in data]
         except httpx.TimeoutException:
             raise format_request_timeout_error()
+        except (httpx.ReadError, httpx.RemoteProtocolError) as err:
+            self._handle_connection_error(err)
+            raise
 
     def restart_code_context(
         self,
@@ -372,3 +378,6 @@ class Sandbox(BaseSandbox):
                 raise err
         except httpx.TimeoutException:
             raise format_request_timeout_error()
+        except (httpx.ReadError, httpx.RemoteProtocolError) as err:
+            self._handle_connection_error(err)
+            raise

@@ -1,27 +1,36 @@
-import httpx
+import asyncio
 import logging
+import weakref
+from typing import Dict, Optional, Tuple
 
-from typing import Optional
+import httpx
 
-from typing_extensions import Self
+from httpx._types import ProxyTypes
 
+from ucloud_sandbox.api import AsyncApiClient, connection_retries, limits
 from ucloud_sandbox.connection_config import ConnectionConfig
-from ucloud_sandbox.api import limits, AsyncApiClient
-
 
 logger = logging.getLogger(__name__)
+
+TransportKey = Tuple[bool, Optional[ProxyTypes]]
 
 
 def get_api_client(config: ConnectionConfig, **kwargs) -> AsyncApiClient:
     return AsyncApiClient(
         config,
-        transport=get_transport(config),
+        async_transport_factory=lambda: get_transport(config),
         **kwargs,
     )
 
 
 class AsyncTransportWithLogger(httpx.AsyncHTTPTransport):
-    singleton: Optional[Self] = None
+    # Keyed weakly by the event loop object itself, not id(loop) — CPython
+    # reuses object ids, so a new loop could otherwise inherit a transport
+    # bound to a previous, closed loop.
+    _instances: weakref.WeakKeyDictionary[
+        asyncio.AbstractEventLoop,
+        Dict[TransportKey, "AsyncTransportWithLogger"],
+    ] = weakref.WeakKeyDictionary()
 
     async def handle_async_request(self, request):
         url = f"{request.url.scheme}://{request.url.host}{request.url.path}"
@@ -38,13 +47,41 @@ class AsyncTransportWithLogger(httpx.AsyncHTTPTransport):
         return self._pool
 
 
-def get_transport(config: ConnectionConfig) -> AsyncTransportWithLogger:
-    if AsyncTransportWithLogger.singleton is not None:
-        return AsyncTransportWithLogger.singleton
+def _get_cached_transport(cls, config: ConnectionConfig, http2: bool):
+    loop = asyncio.get_running_loop()
+    loop_instances = cls._instances.get(loop)
+    if loop_instances is None:
+        loop_instances = {}
+        cls._instances[loop] = loop_instances
 
-    transport = AsyncTransportWithLogger(
-        limits=limits,
-        proxy=config.proxy,
-    )
-    AsyncTransportWithLogger.singleton = transport
+    key: TransportKey = (http2, config.proxy)
+    transport = loop_instances.get(key)
+    if transport is None:
+        transport = cls(
+            limits=limits,
+            proxy=config.proxy,
+            http2=http2,
+            retries=connection_retries,
+        )
+        loop_instances[key] = transport
+
     return transport
+
+
+def get_transport(
+    config: ConnectionConfig, http2: bool = True
+) -> AsyncTransportWithLogger:
+    return _get_cached_transport(AsyncTransportWithLogger, config, http2)
+
+
+class AsyncEnvdTransportWithLogger(AsyncTransportWithLogger):
+    _instances: weakref.WeakKeyDictionary[
+        asyncio.AbstractEventLoop,
+        Dict[TransportKey, "AsyncEnvdTransportWithLogger"],
+    ] = weakref.WeakKeyDictionary()
+
+
+def get_envd_transport(
+    config: ConnectionConfig, http2: bool = True
+) -> AsyncEnvdTransportWithLogger:
+    return _get_cached_transport(AsyncEnvdTransportWithLogger, config, http2)

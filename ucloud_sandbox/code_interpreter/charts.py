@@ -1,10 +1,3 @@
-"""
-Chart data models for Code Interpreter.
-
-These models represent extracted chart data from matplotlib and other plotting libraries,
-useful for building interactive charts or custom visualizations.
-"""
-
 import enum
 from typing import Any, List, Tuple, Optional, Union
 
@@ -42,18 +35,19 @@ class ScaleType(str, enum.Enum):
 
 class Chart:
     """
-    Extracted data from a chart. It's useful for building interactive charts or custom visualizations.
+    Extracted data from a chart. It's useful for building an interactive charts or custom visualizations.
     """
 
     type: ChartType
     title: str
+
     elements: List[Any]
 
     def __init__(self, **kwargs):
         self._raw_data = kwargs
-        self.type = ChartType(kwargs.get("type") or ChartType.UNKNOWN)
-        self.title = kwargs.get("title", "")
-        self.elements = kwargs.get("elements", [])
+        self.type = ChartType(kwargs["type"] or ChartType.UNKNOWN)
+        self.title = kwargs["title"]
+        self.elements = kwargs["elements"]
 
     def to_dict(self) -> dict:
         return self._raw_data
@@ -67,10 +61,10 @@ class Chart2D(Chart):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.x_label = kwargs.get("x_label")
-        self.y_label = kwargs.get("y_label")
-        self.x_unit = kwargs.get("x_unit")
-        self.y_unit = kwargs.get("y_unit")
+        self.x_label = kwargs["x_label"]
+        self.y_label = kwargs["y_label"]
+        self.x_unit = kwargs["x_unit"]
+        self.y_unit = kwargs["y_unit"]
 
 
 class PointData:
@@ -78,8 +72,8 @@ class PointData:
     points: List[Tuple[Union[str, float], Union[str, float]]]
 
     def __init__(self, **kwargs):
-        self.label = kwargs.get("label", "")
-        self.points = [(x, y) for x, y in kwargs.get("points", [])]
+        self.label = kwargs["label"]
+        self.points = [(x, y) for x, y in kwargs["points"]]
 
 
 class PointChart(Chart2D):
@@ -95,27 +89,27 @@ class PointChart(Chart2D):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.x_label = kwargs.get("x_label")
+        self.x_label = kwargs["x_label"]
 
         try:
             self.x_scale = ScaleType(kwargs.get("x_scale"))
         except ValueError:
             self.x_scale = ScaleType.UNKNOWN
 
-        self.x_ticks = kwargs.get("x_ticks", [])
-        self.x_tick_labels = kwargs.get("x_tick_labels", [])
+        self.x_ticks = kwargs["x_ticks"]
+        self.x_tick_labels = kwargs["x_tick_labels"]
 
-        self.y_label = kwargs.get("y_label")
+        self.y_label = kwargs["y_label"]
 
         try:
             self.y_scale = ScaleType(kwargs.get("y_scale"))
         except ValueError:
             self.y_scale = ScaleType.UNKNOWN
 
-        self.y_ticks = kwargs.get("y_ticks", [])
-        self.y_tick_labels = kwargs.get("y_tick_labels", [])
+        self.y_ticks = kwargs["y_ticks"]
+        self.y_tick_labels = kwargs["y_tick_labels"]
 
-        self.elements = [PointData(**d) for d in kwargs.get("elements", [])]
+        self.elements = [PointData(**d) for d in kwargs["elements"]]
 
 
 class LineChart(PointChart):
@@ -132,18 +126,19 @@ class BarData:
     value: str
 
     def __init__(self, **kwargs):
-        self.label = kwargs.get("label", "")
-        self.value = kwargs.get("value", "")
-        self.group = kwargs.get("group", "")
+        self.label = kwargs["label"]
+        self.value = kwargs["value"]
+        self.group = kwargs["group"]
 
 
 class BarChart(Chart2D):
     type = ChartType.BAR
+
     elements: List[BarData]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.elements = [BarData(**d) for d in kwargs.get("elements", [])]
+        self.elements = [BarData(**d) for d in kwargs["elements"]]
 
 
 class PieData:
@@ -152,18 +147,19 @@ class PieData:
     radius: float
 
     def __init__(self, **kwargs):
-        self.label = kwargs.get("label", "")
-        self.angle = kwargs.get("angle", 0.0)
-        self.radius = kwargs.get("radius", 0.0)
+        self.label = kwargs["label"]
+        self.angle = kwargs["angle"]
+        self.radius = kwargs["radius"]
 
 
 class PieChart(Chart):
     type = ChartType.PIE
+
     elements: List[PieData]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.elements = [PieData(**d) for d in kwargs.get("elements", [])]
+        self.elements = [PieData(**d) for d in kwargs["elements"]]
 
 
 class BoxAndWhiskerData:
@@ -176,33 +172,35 @@ class BoxAndWhiskerData:
     outliers: List[float]
 
     def __init__(self, **kwargs):
-        self.label = kwargs.get("label", "")
-        self.min = kwargs.get("min", 0.0)
-        self.first_quartile = kwargs.get("first_quartile", 0.0)
-        self.median = kwargs.get("median", 0.0)
-        self.third_quartile = kwargs.get("third_quartile", 0.0)
-        self.max = kwargs.get("max", 0.0)
+        self.label = kwargs["label"]
+        self.min = kwargs["min"]
+        self.first_quartile = kwargs["first_quartile"]
+        self.median = kwargs["median"]
+        self.third_quartile = kwargs["third_quartile"]
+        self.max = kwargs["max"]
         self.outliers = kwargs.get("outliers") or []
 
 
 class BoxAndWhiskerChart(Chart2D):
     type = ChartType.BOX_AND_WHISKER
+
     elements: List[BoxAndWhiskerData]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.elements = [BoxAndWhiskerData(**d) for d in kwargs.get("elements", [])]
+        self.elements = [BoxAndWhiskerData(**d) for d in kwargs["elements"]]
 
 
 class SuperChart(Chart):
     type = ChartType.SUPERCHART
+
     elements: List[
         Union[LineChart, ScatterChart, BarChart, PieChart, BoxAndWhiskerChart]
     ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.elements = [_deserialize_chart(g) for g in kwargs.get("elements", [])]
+        self.elements = [_deserialize_chart(g) for g in kwargs["elements"]]
 
 
 ChartTypes = Union[
@@ -214,18 +212,17 @@ def _deserialize_chart(data: Optional[dict]) -> Optional[ChartTypes]:
     if not data:
         return None
 
-    chart_type = data.get("type")
-    if chart_type == ChartType.LINE:
+    if data["type"] == ChartType.LINE:
         chart = LineChart(**data)
-    elif chart_type == ChartType.SCATTER:
+    elif data["type"] == ChartType.SCATTER:
         chart = ScatterChart(**data)
-    elif chart_type == ChartType.BAR:
+    elif data["type"] == ChartType.BAR:
         chart = BarChart(**data)
-    elif chart_type == ChartType.PIE:
+    elif data["type"] == ChartType.PIE:
         chart = PieChart(**data)
-    elif chart_type == ChartType.BOX_AND_WHISKER:
+    elif data["type"] == ChartType.BOX_AND_WHISKER:
         chart = BoxAndWhiskerChart(**data)
-    elif chart_type == ChartType.SUPERCHART:
+    elif data["type"] == ChartType.SUPERCHART:
         chart = SuperChart(**data)
     else:
         chart = Chart(**data)
