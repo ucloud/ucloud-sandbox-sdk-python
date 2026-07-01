@@ -6,6 +6,7 @@ from httpx._types import ProxyTypes
 from typing_extensions import Unpack
 
 from ucloud_sandbox.api.metadata import package_version
+from ucloud_sandbox.domain_config import get_ucloud_sandbox_domain
 
 REQUEST_TIMEOUT: float = 60.0  # 60 seconds
 FILE_TIMEOUT: float = 3600.0  # 1 hour
@@ -17,7 +18,7 @@ class VolumeApiParams(TypedDict, total=False):
     """
 
     domain: Optional[str]
-    """Domain to use for the volume API, defaults to `UCLOUD_SANDBOX_DOMAIN` or `cn-wlcb.sandbox.ucloudai.com`."""
+    """Domain to use for the volume API, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain."""
 
     debug: Optional[bool]
     """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""
@@ -47,7 +48,7 @@ class VolumeConnectionConfig:
 
     @staticmethod
     def _domain():
-        return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "cn-wlcb.sandbox.ucloudai.com"
+        return get_ucloud_sandbox_domain()
 
     @staticmethod
     def _debug():

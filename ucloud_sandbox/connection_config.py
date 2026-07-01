@@ -6,6 +6,7 @@ from httpx._types import ProxyTypes
 from typing_extensions import Unpack
 
 from ucloud_sandbox.api.metadata import package_version
+from ucloud_sandbox.domain_config import get_ucloud_sandbox_domain
 
 REQUEST_TIMEOUT: float = 60.0  # 60 seconds
 
@@ -42,7 +43,7 @@ class ApiParams(TypedDict, total=False):
     to enable a non-empty API key check."""
 
     domain: Optional[str]
-    """UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_DOMAIN` environment variable."""
+    """UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain."""
 
     api_url: Optional[str]
     """URL to use for the API, defaults to `https://api.<domain>`. For internal use only."""
@@ -66,7 +67,7 @@ class ConnectionConfig:
 
     @staticmethod
     def _domain():
-        return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "cn-wlcb.sandbox.ucloudai.com"
+        return get_ucloud_sandbox_domain()
 
     @staticmethod
     def _debug():

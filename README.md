@@ -12,8 +12,8 @@ pip install ucloud_sandbox
 
 ### 1. 获取 API Key
 
-1. 访问 [UCloud Sandbox](https://sandbox.ucloudai.com) 注册账号
-2. 在控制台获取 API Key
+1. 访问 [星图平台](https://astraflow.ucloud.cn/) 注册账号
+2. 在 [密钥管理](https://astraflow.ucloud.cn/modelverse/api-keys) 获取 API Key
 3. 设置环境变量：
 
 ```bash
@@ -67,7 +67,7 @@ desktop.kill()
 ```
 
 ## 文档
-访问 [Sandbox 文档](https://github.com/UCloudDoc-Team/agent-sandbox) 获取更多信息。
+访问 [UCloud Agent Sandbox 文档](https://astraflow.ucloud.cn/docs/agent-sandbox) 获取更多信息。
 
 ## 致谢
 

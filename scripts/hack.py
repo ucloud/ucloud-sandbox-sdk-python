@@ -13,6 +13,26 @@ PACKAGE_DIR = REPO_ROOT / "ucloud_sandbox"
 DOCS_URL = "https://astraflow.ucloud.cn/docs/agent-sandbox/product/01-prerequisites"
 DEFAULT_DOMAIN = "cn-wlcb.sandbox.ucloudai.com"
 BASE_IMAGE = "uhub.service.ucloud.cn/agentbox/e2bdev/base:latest"
+DOMAIN_CONFIG_PATH = PACKAGE_DIR / "domain_config.py"
+DOMAIN_CONFIG_IMPORT = (
+    "from ucloud_sandbox.domain_config import get_ucloud_sandbox_domain\n"
+)
+DOMAIN_CONFIG_SOURCE = f'''import os
+
+
+DEFAULT_DOMAIN = "{DEFAULT_DOMAIN}"
+REGION_ENV_VAR = "UCLOUD_SANDBOX_REGION"
+DOMAIN_ENV_VAR = "UCLOUD_SANDBOX_DOMAIN"
+DOMAIN_SUFFIX = "sandbox.ucloudai.com"
+
+
+def get_ucloud_sandbox_domain() -> str:
+    region = os.getenv(REGION_ENV_VAR, "").strip()
+    if region:
+        return f"{{region}}.{{DOMAIN_SUFFIX}}"
+
+    return os.getenv(DOMAIN_ENV_VAR) or DEFAULT_DOMAIN
+'''
 
 TRAFFIC_HEADER = "E2B-Traffic-Access-Token"
 TRAFFIC_HEADER_PLACEHOLDER = "__UCLOUD_SANDBOX_KEEP_TRAFFIC_ACCESS_TOKEN__"
@@ -64,7 +84,7 @@ def replace_branding(text: str) -> str:
     text = text.replace("e2b.pro", DEFAULT_DOMAIN)
     text = text.replace("e2b-staging.dev", DEFAULT_DOMAIN)
 
-    text = text.replace("e2bdev/base:latest", BASE_IMAGE)
+    text = re.sub(r"(?<!/)e2bdev/base:latest", BASE_IMAGE, text)
     text = text.replace('"e2bdev/base"', f'"{BASE_IMAGE}"')
     text = text.replace('api_key="e2b_..."', 'api_key="..."')
 
@@ -78,6 +98,17 @@ def replace_env_vars(text: str) -> str:
     for old, new in ENV_REPLACEMENTS.items():
         text = text.replace(old, new)
     return text
+
+
+def add_domain_config_import(text: str) -> str:
+    if DOMAIN_CONFIG_IMPORT in text:
+        return text
+
+    metadata_import = "from ucloud_sandbox.api.metadata import package_version\n"
+    if metadata_import not in text:
+        raise RuntimeError("Failed to find metadata import for domain config patch")
+
+    return text.replace(metadata_import, metadata_import + DOMAIN_CONFIG_IMPORT)
 
 
 def patch_api_key_validation(path: Path, text: str) -> str:
@@ -109,13 +140,14 @@ def validate_api_key(api_key: str) -> None:
 
 def patch_connection_config(path: Path, text: str) -> str:
     if path == PACKAGE_DIR / "connection_config.py":
+        text = add_domain_config_import(text)
         text = text.replace(
             "from ucloud_sandbox.sandbox_domains import is_supported_sandbox_domain\n",
             "",
         )
         text = text.replace(
             'return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "cn-wlcb.sandbox.ucloudai.com"',
-            f'return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "{DEFAULT_DOMAIN}"',
+            "return get_ucloud_sandbox_domain()",
         )
         text = text.replace(
             'return os.getenv("UCLOUD_SANDBOX_VALIDATE_API_KEY", "true").lower() != "false"',
@@ -128,6 +160,10 @@ def patch_connection_config(path: Path, text: str) -> str:
             "    to enable a non-empty API key check.",
         )
         text = text.replace(
+            "UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_DOMAIN` environment variable.",
+            "UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain.",
+        )
+        text = text.replace(
             '        sandbox_domain = sandbox_domain or self.domain\n'
             '        if is_supported_sandbox_domain(sandbox_domain):\n'
             '            return f"https://sandbox.{sandbox_domain}"\n\n'
@@ -137,9 +173,14 @@ def patch_connection_config(path: Path, text: str) -> str:
         )
 
     if path == PACKAGE_DIR / "volume" / "connection_config.py":
+        text = add_domain_config_import(text)
         text = text.replace(
             'return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "cn-wlcb.sandbox.ucloudai.com"',
-            f'return os.getenv("UCLOUD_SANDBOX_DOMAIN") or "{DEFAULT_DOMAIN}"',
+            "return get_ucloud_sandbox_domain()",
+        )
+        text = text.replace(
+            "Domain to use for the volume API, defaults to `UCLOUD_SANDBOX_DOMAIN` or `cn-wlcb.sandbox.ucloudai.com`.",
+            "Domain to use for the volume API, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain.",
         )
 
     if path == PACKAGE_DIR / "sandbox_domains.py":
@@ -151,6 +192,15 @@ def patch_connection_config(path: Path, text: str) -> str:
         )
 
     return text
+
+
+def ensure_domain_config() -> bool:
+    original = DOMAIN_CONFIG_PATH.read_text() if DOMAIN_CONFIG_PATH.exists() else None
+    if original == DOMAIN_CONFIG_SOURCE:
+        return False
+
+    DOMAIN_CONFIG_PATH.write_text(DOMAIN_CONFIG_SOURCE)
+    return True
 
 
 def patch_file(path: Path) -> bool:
@@ -179,6 +229,9 @@ def main() -> int:
     for path in sorted(PACKAGE_DIR.rglob("*.py")):
         if patch_file(path):
             changed.append(path.relative_to(REPO_ROOT).as_posix())
+
+    if ensure_domain_config():
+        changed.append(DOMAIN_CONFIG_PATH.relative_to(REPO_ROOT).as_posix())
 
     print(f"Applied UCloud Sandbox hacks to {len(changed)} files.")
     for path in changed:

@@ -82,6 +82,8 @@ python3 scripts/hack.py
 - 将环境变量从 `E2B_*` 改成 `UCLOUD_SANDBOX_*`。
 - 默认关闭 API key 格式校验，并将校验逻辑改成仅检查非空。
 - 将默认 domain 改成 `cn-wlcb.sandbox.ucloudai.com`。
+- 额外支持 `UCLOUD_SANDBOX_REGION`，当该环境变量非空时，SDK 推导出的 domain 固定为 `{region}.sandbox.ucloudai.com`，并优先于 `UCLOUD_SANDBOX_DOMAIN`；显式传入的 `domain=` 参数仍然拥有最高优先级。
+- 创建或恢复 `ucloud_sandbox/domain_config.py`，把 UCloud 专属 domain 推导逻辑集中在这个非上游 helper 中，避免把新增业务逻辑散落在从 E2B 同步来的文件里。
 - 将 sandbox URL 固定为 `https://{port}-{sandbox_id}.{domain}` 的形式，不再走 `https://sandbox.<domain>`。
 - 将 `metadata.version("e2b")` 改成 `metadata.version("ucloud_sandbox")`。
 - 将 `publisher` 改成 `ucloud`。
@@ -98,11 +100,19 @@ python3 -m compileall -q scripts/hack.py ucloud_sandbox e2b_connect
 
 第一条命令应该没有输出。`E2B-Traffic-Access-Token` 和 `e2b_connect` 是例外：前者是协议 header，后者是上游 SDK 自带的连接 helper 包名，不属于要清理的品牌残留。
 
-文档也要人工快速过一遍，尤其是 `ucloud_sandbox/__init__.py`、`ucloud_sandbox/code_interpreter/*.py`、`ucloud_sandbox/sandbox_sync/main.py`、`ucloud_sandbox/sandbox_async/main.py` 和 `ucloud_sandbox/template/main.py`。目标不是机械替换，而是保证中文或英文文档读起来通顺，避免出现 `UCloud Sandbox Sandbox`、`UCloud Sandbox cloud sandbox` 这类重复或别扭表达。
+文档和 UCloud 专属 helper 也要人工快速过一遍，尤其是 `ucloud_sandbox/__init__.py`、`ucloud_sandbox/domain_config.py`、`ucloud_sandbox/code_interpreter/*.py`、`ucloud_sandbox/sandbox_sync/main.py`、`ucloud_sandbox/sandbox_async/main.py` 和 `ucloud_sandbox/template/main.py`。目标不是机械替换，而是保证中文或英文文档读起来通顺，避免出现 `UCloud Sandbox Sandbox`、`UCloud Sandbox cloud sandbox` 这类重复或别扭表达。
 
 # 开发注意事项
 
 - 不要把 `upstream/` 当作主要开发目录；它只是上游源码快照。
 - 对 SDK 行为的 UCloud 定制应发生在同步后的 `ucloud_sandbox/` 中，或通过可重复执行的脚本来完成。
+- 如果新增的 UCloud 定制不适合直接写进上游同步文件，优先放到独立 helper 中，并让 `scripts/hack.py` 在同步后可重复创建或恢复它。
 - 每次运行 `scripts/sync_upstreams.sh` 后，`ucloud_sandbox/` 会重新变成上游合并结果，之前手动改过但没有脚本化的 UCloud 定制可能会被覆盖；随后需要手动运行 `python3 scripts/hack.py`。
 - 如果 `pyproject.toml` 被依赖同步脚本更新了，通常还需要根据需要重新生成 `poetry.lock`。
+
+# 提交信息规范
+
+- Git commit message 使用 Conventional Commits 风格：`type(scope): summary`。
+- 常用 `type` 包括 `feat`、`fix`、`docs`、`test`、`refactor`、`chore`；新增 SDK 能力时优先使用 `feat`。
+- `scope` 使用简短英文小写词标识影响范围，例如 `config`、`hack`、`docs`。
+- `summary` 用简短英文动词短语，不以句号结尾，例如 `feat(config): add region-based sandbox domain`。
