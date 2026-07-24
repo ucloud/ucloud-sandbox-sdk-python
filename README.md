@@ -66,6 +66,32 @@ print(desktop.stream.get_url())
 desktop.kill()
 ```
 
+## 私有化 HTTP 部署
+
+私有化服务未配置 TLS 时，设置 sandbox 域名并启用非安全 HTTP：
+
+```bash
+export UCLOUD_SANDBOX_DOMAIN=sandbox.example.com
+export UCLOUD_SANDBOX_INSECURE_HTTP=true
+```
+
+默认管理 API 地址为 `http://api.<domain>`；如果实际地址不符合这个规则，再通过
+`UCLOUD_SANDBOX_API_URL` 指定完整 URL。
+
+也可以在调用时传入参数：
+
+```python
+from ucloud_sandbox import Sandbox
+
+sandbox = Sandbox.create(
+    api_url="http://api.sandbox.example.com",
+    domain="sandbox.example.com",
+    insecure_http=True,
+)
+```
+
+`UCLOUD_SANDBOX_INSECURE_HTTP` 默认为 `false`；仅应在可信私有网络中启用。
+
 ## 文档
 访问 [UCloud Agent Sandbox 文档](https://astraflow.ucloud.cn/docs/agent-sandbox) 获取更多信息。
 

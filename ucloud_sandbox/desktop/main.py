@@ -90,7 +90,7 @@ class _VNCServer:
         self._novnc_auth_enabled = False
         self._novnc_password = None
 
-        self._url = f"https://{desktop.get_host(self._port)}/vnc.html"
+        self._url = desktop.get_url(self._port, "/vnc.html")
 
         self.__desktop = desktop
 
@@ -159,7 +159,7 @@ class _VNCServer:
         self._novnc_password = self._generate_password() if require_auth else None
 
         # Update URL with new port
-        self._url = f"https://{self.__desktop.get_host(self._port)}/vnc.html"
+        self._url = self.__desktop.get_url(self._port, "/vnc.html")
 
         # Set up VNC command
         pwd_flag = "-nopw"

@@ -23,6 +23,9 @@ class VolumeApiParams(TypedDict, total=False):
     debug: Optional[bool]
     """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""
 
+    insecure_http: Optional[bool]
+    """Whether to use HTTP instead of HTTPS, defaults to `UCLOUD_SANDBOX_INSECURE_HTTP`."""
+
     request_timeout: Optional[float]
     """Timeout for the request in **seconds**, defaults to 60 seconds."""
 
@@ -33,7 +36,7 @@ class VolumeApiParams(TypedDict, total=False):
     """Volume auth token used for `Authorization: Bearer <token>`."""
 
     api_url: Optional[str]
-    """URL to use for the volume API, defaults to `UCLOUD_SANDBOX_VOLUME_API_URL` or `https://api.<domain>`."""
+    """URL to use for the volume API, defaults to `UCLOUD_SANDBOX_VOLUME_API_URL` or `<protocol>://api.<domain>`."""
 
     proxy: Optional[ProxyTypes]
     """Proxy to use for the request."""
@@ -59,6 +62,10 @@ class VolumeConnectionConfig:
         return os.getenv("UCLOUD_SANDBOX_VOLUME_API_URL")
 
     @staticmethod
+    def _insecure_http():
+        return os.getenv("UCLOUD_SANDBOX_INSECURE_HTTP", "false").lower() == "true"
+
+    @staticmethod
     def _get_request_timeout(
         default_timeout: Optional[float],
         request_timeout: Optional[float],
@@ -74,6 +81,7 @@ class VolumeConnectionConfig:
         self,
         domain: Optional[str] = None,
         debug: Optional[bool] = None,
+        insecure_http: Optional[bool] = None,
         token: Optional[str] = None,
         api_url: Optional[str] = None,
         request_timeout: Optional[float] = None,
@@ -82,11 +90,21 @@ class VolumeConnectionConfig:
     ):
         self.domain = domain or self._domain()
         self.debug = debug if debug is not None else self._debug()
+        self.insecure_http = (
+            True
+            if self.debug
+            else (insecure_http if insecure_http is not None else self._insecure_http())
+        )
+        protocol = "http" if self.insecure_http else "https"
 
         self.api_url = (
             api_url
             or self._volume_api_url()
-            or ("http://localhost:8080" if self.debug else f"https://api.{self.domain}")
+            or (
+                "http://localhost:8080"
+                if self.debug
+                else f"{protocol}://api.{self.domain}"
+            )
         )
         self.access_token = token
         self.token = self.access_token
@@ -111,6 +129,7 @@ class VolumeConnectionConfig:
         """
         domain = opts.get("domain")
         debug = opts.get("debug")
+        insecure_http = opts.get("insecure_http")
         headers = opts.get("headers")
         request_timeout = opts.get("request_timeout")
         token = opts.get("token")
@@ -125,6 +144,9 @@ class VolumeConnectionConfig:
             VolumeApiParams(
                 domain=domain if domain is not None else self.domain,
                 debug=debug if debug is not None else self.debug,
+                insecure_http=(
+                    insecure_http if insecure_http is not None else self.insecure_http
+                ),
                 token=token if token is not None else self.token,
                 api_url=api_url if api_url is not None else self.api_url,
                 request_timeout=self.get_request_timeout(request_timeout),

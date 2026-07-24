@@ -164,11 +164,11 @@ def patch_connection_config(path: Path, text: str) -> str:
             "UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain.",
         )
         text = text.replace(
-            '        sandbox_domain = sandbox_domain or self.domain\n'
-            '        if is_supported_sandbox_domain(sandbox_domain):\n'
+            "        sandbox_domain = sandbox_domain or self.domain\n"
+            "        if is_supported_sandbox_domain(sandbox_domain):\n"
             '            return f"https://sandbox.{sandbox_domain}"\n\n'
             '        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"',
-            '        sandbox_domain = sandbox_domain or self.domain\n'
+            "        sandbox_domain = sandbox_domain or self.domain\n"
             '        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"',
         )
 
@@ -194,6 +194,320 @@ def patch_connection_config(path: Path, text: str) -> str:
     return text
 
 
+def replace_once(path: Path, text: str, old: str, new: str) -> str:
+    if old not in text:
+        raise RuntimeError(f"Failed to apply insecure HTTP patch in {path}")
+    return text.replace(old, new, 1)
+
+
+def patch_insecure_http(path: Path, text: str) -> str:
+    if path == PACKAGE_DIR / "connection_config.py":
+        if "    insecure_http: Optional[bool]\n" in text:
+            return text
+
+        text = replace_once(
+            path,
+            text,
+            "    sandbox_url: Optional[str]\n"
+            '    """URL to connect to sandbox, defaults to `UCLOUD_SANDBOX_URL` environment variable."""\n',
+            "    sandbox_url: Optional[str]\n"
+            '    """URL to connect to sandbox, defaults to `UCLOUD_SANDBOX_URL` environment variable."""\n\n'
+            "    insecure_http: Optional[bool]\n"
+            '    """Whether to use HTTP instead of HTTPS, defaults to `UCLOUD_SANDBOX_INSECURE_HTTP`."""\n',
+        )
+        text = text.replace(
+            '    """URL to use for the API, defaults to `https://api.<domain>`. For internal use only."""',
+            '    """URL to use for the API, defaults to `<protocol>://api.<domain>`. For internal use only."""',
+        )
+        text = replace_once(
+            path,
+            text,
+            '    def _sandbox_url():\n        return os.getenv("UCLOUD_SANDBOX_URL")\n',
+            "    def _sandbox_url():\n"
+            '        return os.getenv("UCLOUD_SANDBOX_URL")\n\n'
+            "    @staticmethod\n"
+            "    def _insecure_http():\n"
+            '        return os.getenv("UCLOUD_SANDBOX_INSECURE_HTTP", "false").lower() == "true"\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            "        sandbox_url: Optional[str] = None,\n"
+            "        access_token: Optional[str] = None,\n",
+            "        sandbox_url: Optional[str] = None,\n"
+            "        insecure_http: Optional[bool] = None,\n"
+            "        access_token: Optional[str] = None,\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            "        self.api_url = (\n"
+            "            api_url\n"
+            "            or ConnectionConfig._api_url()\n"
+            '            or ("http://localhost:3000" if self.debug else f"https://api.{self.domain}")\n'
+            "        )\n\n"
+            "        self._sandbox_url: Optional[str] = (\n"
+            "            sandbox_url or ConnectionConfig._sandbox_url()\n"
+            "        )\n",
+            "        self._sandbox_url: Optional[str] = sandbox_url or ConnectionConfig._sandbox_url()\n"
+            "        self.insecure_http = (\n"
+            "            True\n"
+            "            if self.debug\n"
+            "            else (\n"
+            "                insecure_http\n"
+            "                if insecure_http is not None\n"
+            "                else ConnectionConfig._insecure_http()\n"
+            "            )\n"
+            "        )\n"
+            '        self.sandbox_protocol = "http" if self.insecure_http else "https"\n\n'
+            "        self.api_url = (\n"
+            "            api_url\n"
+            "            or ConnectionConfig._api_url()\n"
+            "            or (\n"
+            '                "http://localhost:3000"\n'
+            "                if self.debug\n"
+            '                else f"{self.sandbox_protocol}://api.{self.domain}"\n'
+            "            )\n"
+            "        )\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            "        if self.debug:\n"
+            '            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n\n'
+            "        sandbox_domain = sandbox_domain or self.domain\n"
+            '        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n',
+            "        sandbox_domain = sandbox_domain or self.domain\n"
+            '        return f"{self.sandbox_protocol}://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            "        if self.debug:\n"
+            '            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n\n'
+            '        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n',
+            '        return f"{self.sandbox_protocol}://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            '        sandbox_url = opts.get("sandbox_url")\n',
+            '        sandbox_url = opts.get("sandbox_url")\n'
+            '        insecure_http = opts.get("insecure_http")\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            "                sandbox_url=(\n"
+            "                    sandbox_url\n"
+            "                    if sandbox_url is not None\n"
+            "                    else cast(Optional[str], self._sandbox_url)\n"
+            "                ),\n",
+            "                sandbox_url=(\n"
+            "                    sandbox_url\n"
+            "                    if sandbox_url is not None\n"
+            "                    else cast(Optional[str], self._sandbox_url)\n"
+            "                ),\n"
+            "                insecure_http=(\n"
+            "                    insecure_http\n"
+            "                    if insecure_http is not None\n"
+            "                    else self.insecure_http\n"
+            "                ),\n",
+        )
+
+    if path == PACKAGE_DIR / "volume" / "connection_config.py":
+        if "    insecure_http: Optional[bool]\n" in text:
+            return text
+
+        text = replace_once(
+            path,
+            text,
+            "    debug: Optional[bool]\n"
+            '    """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""\n',
+            "    debug: Optional[bool]\n"
+            '    """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""\n\n'
+            "    insecure_http: Optional[bool]\n"
+            '    """Whether to use HTTP instead of HTTPS, defaults to `UCLOUD_SANDBOX_INSECURE_HTTP`."""\n',
+        )
+        text = text.replace(
+            '    """URL to use for the volume API, defaults to `UCLOUD_SANDBOX_VOLUME_API_URL` or `https://api.<domain>`."""',
+            '    """URL to use for the volume API, defaults to `UCLOUD_SANDBOX_VOLUME_API_URL` or `<protocol>://api.<domain>`."""',
+        )
+        text = replace_once(
+            path,
+            text,
+            "    def _volume_api_url():\n"
+            '        return os.getenv("UCLOUD_SANDBOX_VOLUME_API_URL")\n',
+            "    def _volume_api_url():\n"
+            '        return os.getenv("UCLOUD_SANDBOX_VOLUME_API_URL")\n\n'
+            "    @staticmethod\n"
+            "    def _insecure_http():\n"
+            '        return os.getenv("UCLOUD_SANDBOX_INSECURE_HTTP", "false").lower() == "true"\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            "        domain: Optional[str] = None,\n"
+            "        debug: Optional[bool] = None,\n"
+            "        token: Optional[str] = None,\n",
+            "        domain: Optional[str] = None,\n"
+            "        debug: Optional[bool] = None,\n"
+            "        insecure_http: Optional[bool] = None,\n"
+            "        token: Optional[str] = None,\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            "        self.domain = domain or self._domain()\n"
+            "        self.debug = debug if debug is not None else self._debug()\n\n"
+            "        self.api_url = (\n"
+            "            api_url\n"
+            "            or self._volume_api_url()\n"
+            '            or ("http://localhost:8080" if self.debug else f"https://api.{self.domain}")\n'
+            "        )\n",
+            "        self.domain = domain or self._domain()\n"
+            "        self.debug = debug if debug is not None else self._debug()\n"
+            "        self.insecure_http = (\n"
+            "            True\n"
+            "            if self.debug\n"
+            "            else (\n"
+            "                insecure_http\n"
+            "                if insecure_http is not None\n"
+            "                else self._insecure_http()\n"
+            "            )\n"
+            "        )\n"
+            '        protocol = "http" if self.insecure_http else "https"\n\n'
+            "        self.api_url = (\n"
+            "            api_url\n"
+            "            or self._volume_api_url()\n"
+            "            or (\n"
+            '                "http://localhost:8080"\n'
+            "                if self.debug\n"
+            '                else f"{protocol}://api.{self.domain}"\n'
+            "            )\n"
+            "        )\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            '        debug = opts.get("debug")\n',
+            '        debug = opts.get("debug")\n'
+            '        insecure_http = opts.get("insecure_http")\n',
+        )
+        text = replace_once(
+            path,
+            text,
+            "                debug=debug if debug is not None else self.debug,\n",
+            "                debug=debug if debug is not None else self.debug,\n"
+            "                insecure_http=(\n"
+            "                    insecure_http\n"
+            "                    if insecure_http is not None\n"
+            "                    else self.insecure_http\n"
+            "                ),\n",
+        )
+
+    if path == PACKAGE_DIR / "sandbox" / "main.py":
+        if '    def get_url(self, port: int, path: str = "") -> str:\n' in text:
+            return text
+
+        text = replace_once(
+            path,
+            text,
+            "        return self.connection_config.get_host(\n"
+            "            self.sandbox_id, self.sandbox_domain, port\n"
+            "        )\n\n"
+            "    def get_mcp_url(self) -> str:\n",
+            "        return self.connection_config.get_host(\n"
+            "            self.sandbox_id, self.sandbox_domain, port\n"
+            "        )\n\n"
+            '    def get_url(self, port: int, path: str = "") -> str:\n'
+            '        """\n'
+            "        Get the HTTP(S) URL for a sandbox port.\n\n"
+            "        :param port: Port to connect to\n"
+            "        :param path: Optional URL path, including the leading slash\n\n"
+            "        :return: URL for connecting to the sandbox port\n"
+            '        """\n'
+            '        return f"{self.connection_config.sandbox_protocol}://{self.get_host(port)}{path}"\n\n'
+            "    def get_mcp_url(self) -> str:\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            '        return f"https://{self.get_host(self.mcp_port)}/mcp"\n',
+            '        return self.get_url(self.mcp_port, "/mcp")\n',
+        )
+
+    if path in {
+        PACKAGE_DIR / "code_interpreter" / "code_interpreter_sync.py",
+        PACKAGE_DIR / "code_interpreter" / "code_interpreter_async.py",
+    }:
+        old = (
+            "        return f\"{'http' if self.connection_config.debug else 'https'}://"
+            '{self.get_host(JUPYTER_PORT)}"\n'
+        )
+        if old in text:
+            text = text.replace(old, "        return self.get_url(JUPYTER_PORT)\n", 1)
+
+    if path == PACKAGE_DIR / "desktop" / "main.py":
+        text = text.replace(
+            'self._url = f"https://{desktop.get_host(self._port)}/vnc.html"',
+            'self._url = desktop.get_url(self._port, "/vnc.html")',
+        )
+        text = text.replace(
+            'self._url = f"https://{self.__desktop.get_host(self._port)}/vnc.html"',
+            'self._url = self.__desktop.get_url(self._port, "/vnc.html")',
+        )
+
+    if path in {
+        PACKAGE_DIR / "volume" / "volume_sync.py",
+        PACKAGE_DIR / "volume" / "volume_async.py",
+    }:
+        if "        self._insecure_http = insecure_http\n" in text:
+            return text
+
+        text = replace_once(
+            path,
+            text,
+            "        domain: Optional[str] = None,\n"
+            "        debug: Optional[bool] = None,\n"
+            "        proxy: Optional[ProxyTypes] = None,\n",
+            "        domain: Optional[str] = None,\n"
+            "        debug: Optional[bool] = None,\n"
+            "        insecure_http: Optional[bool] = None,\n"
+            "        proxy: Optional[ProxyTypes] = None,\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            "        self._domain = domain\n"
+            "        self._debug = debug\n"
+            "        self._proxy = proxy\n",
+            "        self._domain = domain\n"
+            "        self._debug = debug\n"
+            "        self._insecure_http = insecure_http\n"
+            "        self._proxy = proxy\n",
+        )
+        text = replace_once(
+            path,
+            text,
+            '            debug=opts.get("debug") if opts.get("debug") is not None else self._debug,\n',
+            '            debug=opts.get("debug") if opts.get("debug") is not None else self._debug,\n'
+            "            insecure_http=(\n"
+            '                opts.get("insecure_http")\n'
+            '                if opts.get("insecure_http") is not None\n'
+            "                else self._insecure_http\n"
+            "            ),\n",
+        )
+        text = text.replace(
+            "            debug=config.debug,\n            proxy=config.proxy,\n",
+            "            debug=config.debug,\n"
+            "            insecure_http=config.insecure_http,\n"
+            "            proxy=config.proxy,\n",
+        )
+
+    return text
+
+
 def ensure_domain_config() -> bool:
     original = DOMAIN_CONFIG_PATH.read_text() if DOMAIN_CONFIG_PATH.exists() else None
     if original == DOMAIN_CONFIG_SOURCE:
@@ -212,6 +526,7 @@ def patch_file(path: Path) -> bool:
     text = replace_branding(text)
     text = patch_api_key_validation(path, text)
     text = patch_connection_config(path, text)
+    text = patch_insecure_http(path, text)
 
     text = text.replace(TRAFFIC_HEADER_PLACEHOLDER, TRAFFIC_HEADER)
 

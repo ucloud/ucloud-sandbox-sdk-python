@@ -84,7 +84,8 @@ python3 scripts/hack.py
 - 将默认 domain 改成 `cn-wlcb.sandbox.ucloudai.com`。
 - 额外支持 `UCLOUD_SANDBOX_REGION`，当该环境变量非空时，SDK 推导出的 domain 固定为 `{region}.sandbox.ucloudai.com`，并优先于 `UCLOUD_SANDBOX_DOMAIN`；显式传入的 `domain=` 参数仍然拥有最高优先级。
 - 创建或恢复 `ucloud_sandbox/domain_config.py`，把 UCloud 专属 domain 推导逻辑集中在这个非上游 helper 中，避免把新增业务逻辑散落在从 E2B 同步来的文件里。
-- 将 sandbox URL 固定为 `https://{port}-{sandbox_id}.{domain}` 的形式，不再走 `https://sandbox.<domain>`。
+- 额外支持 `UCLOUD_SANDBOX_INSECURE_HTTP` 和 `insecure_http=` 参数；为 `true` 时管理 API、sandbox、Code Interpreter、Desktop 和 Volume 的默认 URL 使用 HTTP，默认仍使用 HTTPS。
+- 将 sandbox URL 固定为 `{protocol}://{port}-{sandbox_id}.{domain}` 的形式，不再走 `https://sandbox.<domain>`。
 - 将 `metadata.version("e2b")` 改成 `metadata.version("ucloud_sandbox")`。
 - 将 `publisher` 改成 `ucloud`。
 - 将 User-Agent 改成 `ucloud-agentbox-sdk/{package_version}`。

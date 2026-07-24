@@ -59,6 +59,7 @@ class Volume:
         token: Optional[str] = None,
         domain: Optional[str] = None,
         debug: Optional[bool] = None,
+        insecure_http: Optional[bool] = None,
         proxy: Optional[ProxyTypes] = None,
     ):
         self._volume_id = volume_id
@@ -66,6 +67,7 @@ class Volume:
         self._token = token
         self._domain = domain
         self._debug = debug
+        self._insecure_http = insecure_http
         self._proxy = proxy
 
     @property
@@ -86,6 +88,11 @@ class Volume:
         return VolumeConnectionConfig(
             domain=opts.get("domain") or self._domain,
             debug=opts.get("debug") if opts.get("debug") is not None else self._debug,
+            insecure_http=(
+                opts.get("insecure_http")
+                if opts.get("insecure_http") is not None
+                else self._insecure_http
+            ),
             token=opts.get("token") or self._token,
             api_url=opts.get("api_url"),
             request_timeout=opts.get("request_timeout"),
@@ -125,6 +132,7 @@ class Volume:
             token=res.parsed.token,
             domain=config.domain,
             debug=config.debug,
+            insecure_http=config.insecure_http,
             proxy=config.proxy,
         )
         return vol
@@ -146,6 +154,7 @@ class Volume:
             token=info.token,
             domain=config.domain,
             debug=config.debug,
+            insecure_http=config.insecure_http,
             proxy=config.proxy,
         )
 

@@ -58,7 +58,7 @@ class Sandbox(BaseSandbox):
 
     @property
     def _jupyter_url(self) -> str:
-        return f"{'http' if self.connection_config.debug else 'https'}://{self.get_host(JUPYTER_PORT)}"
+        return self.get_url(JUPYTER_PORT)
 
     @property
     def _client(self) -> Client:

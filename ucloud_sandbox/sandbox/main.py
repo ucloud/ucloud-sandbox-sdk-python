@@ -218,10 +218,23 @@ class SandboxBase:
             self.sandbox_id, self.sandbox_domain, port
         )
 
+    def get_url(self, port: int, path: str = "") -> str:
+        """
+        Get the HTTP(S) URL for a sandbox port.
+
+        :param port: Port to connect to
+        :param path: Optional URL path, including the leading slash
+
+        :return: URL for connecting to the sandbox port
+        """
+        return (
+            f"{self.connection_config.sandbox_protocol}://{self.get_host(port)}{path}"
+        )
+
     def get_mcp_url(self) -> str:
         """
         Get the MCP URL for the sandbox.
 
         :returns MCP URL for the sandbox.
         """
-        return f"https://{self.get_host(self.mcp_port)}/mcp"
+        return self.get_url(self.mcp_port, "/mcp")

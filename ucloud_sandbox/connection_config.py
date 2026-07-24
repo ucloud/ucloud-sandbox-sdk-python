@@ -46,7 +46,7 @@ class ApiParams(TypedDict, total=False):
     """UCloud Sandbox domain to use for authentication, defaults to `UCLOUD_SANDBOX_REGION`, `UCLOUD_SANDBOX_DOMAIN`, or the default UCloud Sandbox domain."""
 
     api_url: Optional[str]
-    """URL to use for the API, defaults to `https://api.<domain>`. For internal use only."""
+    """URL to use for the API, defaults to `<protocol>://api.<domain>`. For internal use only."""
 
     debug: Optional[bool]
     """Whether to use debug mode, defaults to `UCLOUD_SANDBOX_DEBUG` environment variable."""
@@ -56,6 +56,9 @@ class ApiParams(TypedDict, total=False):
 
     sandbox_url: Optional[str]
     """URL to connect to sandbox, defaults to `UCLOUD_SANDBOX_URL` environment variable."""
+
+    insecure_http: Optional[bool]
+    """Whether to use HTTP instead of HTTPS, defaults to `UCLOUD_SANDBOX_INSECURE_HTTP`."""
 
 
 class ConnectionConfig:
@@ -90,6 +93,10 @@ class ConnectionConfig:
         return os.getenv("UCLOUD_SANDBOX_URL")
 
     @staticmethod
+    def _insecure_http():
+        return os.getenv("UCLOUD_SANDBOX_INSECURE_HTTP", "false").lower() == "true"
+
+    @staticmethod
     def _access_token():
         return os.getenv("UCLOUD_SANDBOX_ACCESS_TOKEN")
 
@@ -112,6 +119,7 @@ class ConnectionConfig:
         validate_api_key: Optional[bool] = None,
         api_url: Optional[str] = None,
         sandbox_url: Optional[str] = None,
+        insecure_http: Optional[bool] = None,
         access_token: Optional[str] = None,
         request_timeout: Optional[float] = None,
         headers: Optional[Dict[str, str]] = None,
@@ -145,14 +153,28 @@ class ConnectionConfig:
             request_timeout,
         )
 
+        self._sandbox_url: Optional[str] = (
+            sandbox_url or ConnectionConfig._sandbox_url()
+        )
+        self.insecure_http = (
+            True
+            if self.debug
+            else (
+                insecure_http
+                if insecure_http is not None
+                else ConnectionConfig._insecure_http()
+            )
+        )
+        self.sandbox_protocol = "http" if self.insecure_http else "https"
+
         self.api_url = (
             api_url
             or ConnectionConfig._api_url()
-            or ("http://localhost:3000" if self.debug else f"https://api.{self.domain}")
-        )
-
-        self._sandbox_url: Optional[str] = (
-            sandbox_url or ConnectionConfig._sandbox_url()
+            or (
+                "http://localhost:3000"
+                if self.debug
+                else f"{self.sandbox_protocol}://api.{self.domain}"
+            )
         )
 
     @staticmethod
@@ -174,20 +196,14 @@ class ConnectionConfig:
         if self._sandbox_url:
             return self._sandbox_url  # type: ignore[return-value]
 
-        if self.debug:
-            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
-
         sandbox_domain = sandbox_domain or self.domain
-        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+        return f"{self.sandbox_protocol}://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
 
     def get_sandbox_direct_url(self, sandbox_id: str, sandbox_domain: str) -> str:
         if self._sandbox_url:
             return self._sandbox_url  # type: ignore[return-value]
 
-        if self.debug:
-            return f"http://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
-
-        return f"https://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
+        return f"{self.sandbox_protocol}://{self.get_host(sandbox_id, sandbox_domain, self.envd_port)}"
 
     def get_host(self, sandbox_id: str, sandbox_domain: str, port: int) -> str:
         """
@@ -231,6 +247,7 @@ class ConnectionConfig:
         debug = opts.get("debug")
         proxy = opts.get("proxy")
         sandbox_url = opts.get("sandbox_url")
+        insecure_http = opts.get("insecure_http")
 
         req_headers = self.headers.copy()
         if headers is not None:
@@ -261,6 +278,9 @@ class ConnectionConfig:
                     sandbox_url
                     if sandbox_url is not None
                     else cast(Optional[str], self._sandbox_url)
+                ),
+                insecure_http=(
+                    insecure_http if insecure_http is not None else self.insecure_http
                 ),
             )
         )
